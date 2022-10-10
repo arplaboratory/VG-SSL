@@ -36,7 +36,7 @@ python h5_transformer.py --read_path ~/datasets_vg/datasets/pitts250k/images/val
 python h5_transformer.py --read_path ~/datasets_vg/datasets/san_francisco/images/test/database --save_path  ~/datasets_vg/datasets/san_francisco/database.h5 &
 python h5_transformer.py --read_path ~/datasets_vg/datasets/san_francisco/images/test/queries --save_path  ~/datasets_vg/datasets/san_francisco/queries.h5 &
 
-#san_francisco
+#st_lucia
 python h5_transformer.py --read_path ~/datasets_vg/datasets/st_lucia/images/test/database --save_path  ~/datasets_vg/datasets/st_lucia/database.h5 &
 python h5_transformer.py --read_path ~/datasets_vg/datasets/st_lucia/images/test/queries --save_path  ~/datasets_vg/datasets/st_lucia/queries.h5 &
 
