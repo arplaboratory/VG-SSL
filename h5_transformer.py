@@ -11,6 +11,7 @@ parser.add_argument('--read_path', type=str, help='The path of the folder that c
 parser.add_argument('--save_path', type=str, help='The path of the folder that contains jpg or png images')
 parser.add_argument('--resize_height', type=int, default=480)
 parser.add_argument('--resize_width', type=int, default=640)
+parser.add_argument('--compress', action='store_true')
 args = parser.parse_args()
 
 # To create h5 file, we must resize the images
@@ -27,8 +28,12 @@ for img_name in tqdm(os.listdir(args.read_path)):
         img_np = np.expand_dims(img_np, axis = 0)
         size_np = np.expand_dims(np.array([img.height, img.width]), axis=0)
         if not start:
-            hf.create_dataset('image_data', data=img_np, chunks=True, maxshape=(None, 640, 640, 3))  # write the data to hdf5 file
-            hf.create_dataset('image_size', data=size_np, chunks=True, maxshape=(None, 2))
+            if args.compress:
+                hf.create_dataset('image_data', data=img_np, chunks=True, maxshape=(None, 640, 640, 3), compression='lzf')  # write the data to hdf5 file
+                hf.create_dataset('image_size', data=size_np, chunks=True, maxshape=(None, 2), compression='lzf')
+            else:
+                hf.create_dataset('image_data', data=img_np, chunks=True, maxshape=(None, 640, 640, 3))  # write the data to hdf5 file
+                hf.create_dataset('image_size', data=size_np, chunks=True, maxshape=(None, 2))
             start = True
         else:
             hf['image_data'].resize(hf['image_data'].shape[0] + img_np.shape[0], axis=0)
