@@ -14,7 +14,7 @@ for h5_file_name in os.listdir(args.read_path):
     extension = h5_file_name.split('.')[-1]
     if extension == 'h5':
         hf = h5py.File(os.path.join(args.read_path, h5_file_name), 'r') # open a hdf5 file
-        print(h5_file_name)
+        print(os.path.join(args.read_path, h5_file_name))
         print(hf['image_name'][0])
         print(hf['image_size'][0])
         print(hf['image_data'][0,0:10,0:10,0])
