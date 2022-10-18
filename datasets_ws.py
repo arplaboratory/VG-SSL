@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 from torch.utils.data.dataset import Subset
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.data.dataloader import DataLoader
-
+import h5py
 
 base_transform = transforms.Compose([
     transforms.ToTensor(),
@@ -74,13 +74,27 @@ class BaseDataset(data.Dataset):
         self.resize = args.resize
         self.test_method = args.test_method
         
+        #### Redirect datafolder path to h5
+        self.database_folder_h5_path = join(datasets_folder, dataset_name, split + '_database.h5')
+        self.queries_folder_h5_path = join(datasets_folder, dataset_name, split + '_queries.h5')
+        database_folder_h5_df = h5py.File(self.database_folder_h5_path, 'r')
+        queries_folder_h5_df = h5py.File(self.queries_folder_h5_path, 'r')
+
+        #### Map name to index
+        self.database_name_dict = {}
+        self.queries_name_dict = {}
+        for index, database_image_name in enumerate(database_folder_h5_df['image_name']):
+            self.database_name_dict[database_image_name.decode('UTF-8')] = index
+        for index, queries_image_name in enumerate(queries_folder_h5_df['image_name']):
+            self.queries_name_dict[queries_image_name.decode('UTF-8')] = index
+
         #### Read paths and UTM coordinates for all images.
-        database_folder = join(self.dataset_folder, "database")
-        queries_folder  = join(self.dataset_folder, "queries")
-        if not os.path.exists(database_folder): raise FileNotFoundError(f"Folder {database_folder} does not exist")
-        if not os.path.exists(queries_folder) : raise FileNotFoundError(f"Folder {queries_folder} does not exist")
-        self.database_paths = sorted(glob(join(database_folder, "**", "*.jpg"), recursive=True))
-        self.queries_paths  = sorted(glob(join(queries_folder, "**", "*.jpg"),  recursive=True))
+        # database_folder = join(self.dataset_folder, "database")
+        # queries_folder  = join(self.dataset_folder, "queries")
+        # if not os.path.exists(database_folder): raise FileNotFoundError(f"Folder {database_folder} does not exist")
+        # if not os.path.exists(queries_folder) : raise FileNotFoundError(f"Folder {queries_folder} does not exist")
+        self.database_paths = sorted(self.database_name_dict)
+        self.queries_paths  = sorted(self.queries_name_dict)
         # The format must be path/to/file/@utm_easting@utm_northing@...@.jpg
         self.database_utms = np.array([(path.split("@")[1], path.split("@")[2]) for path in self.database_paths]).astype(np.float)
         self.queries_utms  = np.array([(path.split("@")[1], path.split("@")[2]) for path in self.queries_paths]).astype(np.float)
@@ -92,13 +106,29 @@ class BaseDataset(data.Dataset):
                                                              radius=args.val_positive_dist_threshold,
                                                              return_distance=False)
         
+        # Add database, queries prefix
+        for i in range(len(self.database_paths)):
+            self.database_paths[i] = 'database_' + self.database_paths[i]
+        for i in range(len(self.queries_paths)):
+            self.queries_paths[i] = 'queries_' + self.queries_paths[i]
+
         self.images_paths = list(self.database_paths) + list(self.queries_paths)
-        
+
         self.database_num = len(self.database_paths)
         self.queries_num  = len(self.queries_paths)
     
+        #### Close h5 and initialize for h5 reading in __getitem__
+        self.database_folder_h5_df = None
+        self.queries_folder_h5_df = None
+        database_folder_h5_df.close()
+        queries_folder_h5_df.close()
+
     def __getitem__(self, index):
-        img = path_to_pil_img(self.images_paths[index])
+        #### Init
+        if self.database_folder_h5_df is None:
+            self.database_folder_h5_df = h5py.File(self.database_folder_h5_path, 'r')
+            self.queries_folder_h5_df = h5py.File(self.queries_folder_h5_path, 'r')
+        img = self._find_img_in_h5(index)
         img = base_transform(img)
         # With database images self.test_method should always be "hard_resize"
         if self.test_method == "hard_resize":
@@ -129,13 +159,38 @@ class BaseDataset(data.Dataset):
                 f"{processed_img.shape} {torch.Size([5, 3, shorter_side, shorter_side])}"
         return processed_img
     
+    def _find_img_in_h5(self, index, database_queries_split=None):
+        #### Find inside index for h5
+        if database_queries_split is None:
+            image_name = '_'.join(self.images_paths[index].split('_')[1:])
+            database_queries_split = self.images_paths[index].split('_')[0]
+        else:
+            if database_queries_split == 'database':
+                image_name = self.database_paths[index]
+            elif database_queries_split == 'queries':
+                image_name = self.queries_paths[index]
+            else:
+                raise KeyError('Dont find correct database_queries_split!')
+
+        if database_queries_split == 'database':
+            img = Image.fromarray(self.database_folder_h5_df['image_data'][self.database_name_dict[image_name]])
+        elif database_queries_split == 'queries':
+            img = Image.fromarray(self.queries_folder_h5_df['image_data'][self.queries_name_dict[image_name]])
+        else:
+            raise KeyError('Dont find correct database_queries_split!')
+
+        return img
+
     def __len__(self):
         return len(self.images_paths)
     def __repr__(self):
         return  (f"< {self.__class__.__name__}, {self.dataset_name} - #database: {self.database_num}; #queries: {self.queries_num} >")
     def get_positives(self):
         return self.soft_positives_per_query
-
+    def __del__(self):
+        if hasattr(self, 'database_folder_h5_df') and self.database_folder_h5_df is not None:
+            self.database_folder_h5_df.close()
+            self.queries_folder_h5_df.close()
 
 class TripletsDataset(BaseDataset):
     """Dataset used for training, it is used to compute the triplets 
@@ -214,10 +269,20 @@ class TripletsDataset(BaseDataset):
         if self.is_inference:
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
             return super().__getitem__(index)
+
+        #### Init
+        if self.database_folder_h5_df is None:
+            self.database_folder_h5_df = h5py.File(self.database_folder_h5_path, 'r')
+            self.queries_folder_h5_df = h5py.File(self.queries_folder_h5_path, 'r')
+
         query_index, best_positive_index, neg_indexes = torch.split(self.triplets_global_indexes[index], (1,1,self.negs_num_per_query))
-        query     =  self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
-        positive  =  self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
-        negatives = [self.resized_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
+
+        # query     =  self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
+        # positive  =  self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
+        # negatives = [self.resized_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
+        query     =  self.query_transform(self._find_img_in_h5(query_index, split='queries'))
+        positive  =  self.resized_transform(self._find_img_in_h5(best_positive_index, split='database'))
+        negatives = [self.resized_transform(self._find_img_in_h5(i, split='database')) for i in neg_indexes]
         images = torch.stack((query, positive, *negatives), 0)
         triplets_local_indexes = torch.empty((0,3), dtype=torch.int)
         for neg_num in range(len(neg_indexes)):
