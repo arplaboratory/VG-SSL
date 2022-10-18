@@ -159,7 +159,7 @@ class BaseDataset(data.Dataset):
                 f"{processed_img.shape} {torch.Size([5, 3, shorter_side, shorter_side])}"
         return processed_img
     
-    def _find_img_in_h5(self, index, database_queries_split):
+    def _find_img_in_h5(self, index, database_queries_split=None):
         #### Find inside index for h5
         if database_queries_split is None:
             image_name = '_'.join(self.images_paths[index].split('_')[1:])
