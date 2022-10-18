@@ -280,9 +280,9 @@ class TripletsDataset(BaseDataset):
         # query     =  self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
         # positive  =  self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
         # negatives = [self.resized_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
-        query     =  self.query_transform(self._find_img_in_h5(query_index, split='queries'))
-        positive  =  self.resized_transform(self._find_img_in_h5(best_positive_index, split='database'))
-        negatives = [self.resized_transform(self._find_img_in_h5(i, split='database')) for i in neg_indexes]
+        query     =  self.query_transform(self._find_img_in_h5(query_index, 'queries'))
+        positive  =  self.resized_transform(self._find_img_in_h5(best_positive_index, 'database'))
+        negatives = [self.resized_transform(self._find_img_in_h5(i, 'database')) for i in neg_indexes]
         images = torch.stack((query, positive, *negatives), 0)
         triplets_local_indexes = torch.empty((0,3), dtype=torch.int)
         for neg_num in range(len(neg_indexes)):
