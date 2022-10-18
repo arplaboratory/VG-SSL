@@ -5,8 +5,8 @@
 #SBATCH --time=24:00:00
 #SBATCH --gres=gpu:4
 #SBATCH --mem=8GB
-#SBATCH --job-name=train_pitts30k_full
-#SBATCH --output=train_pitts30k_full.out
+#SBATCH --job-name=train_msls_partial
+#SBATCH --output=train_msls_partial.out
 
 eval "$(conda shell.bash hook)"
 conda activate VPR_SSL
