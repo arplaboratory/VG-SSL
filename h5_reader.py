@@ -17,6 +17,7 @@ for h5_file_name in os.listdir(args.read_path):
         print(os.path.join(args.read_path, h5_file_name))
         print(hf['image_name'][0])
         print(hf['image_size'][0])
+        print(hf['image_data'].shape)
         print(hf['image_data'][0,0:10,0:10,0])
         print('====================================')
         hf.close()  # close the hdf5 file
