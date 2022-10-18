@@ -23,6 +23,6 @@ for h5_file_name in os.listdir(args.read_path):
             print(hf['image_data'][0,0:10,0:10,0])
             hf.close()  # close the hdf5 file
         except Exception as e:
-            print(f'Reading error for {args.read_path}')
+            print(f'Reading error for {os.path.join(args.read_path, h5_file_name)}')
             print(f'{e}')
         print('====================================')
