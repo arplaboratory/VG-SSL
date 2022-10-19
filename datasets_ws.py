@@ -68,8 +68,8 @@ class BaseDataset(data.Dataset):
         super().__init__()
         self.args = args
         self.dataset_name = dataset_name
-        self.dataset_folder = join(datasets_folder, dataset_name, "images", split)
-        if not os.path.exists(self.dataset_folder): raise FileNotFoundError(f"Folder {self.dataset_folder} does not exist")
+        # self.dataset_folder = join(datasets_folder, dataset_name, "images", split)
+        # if not os.path.exists(self.dataset_folder): raise FileNotFoundError(f"Folder {self.dataset_folder} does not exist")
         
         self.resize = args.resize
         self.test_method = args.test_method
@@ -277,9 +277,6 @@ class TripletsDataset(BaseDataset):
 
         query_index, best_positive_index, neg_indexes = torch.split(self.triplets_global_indexes[index], (1,1,self.negs_num_per_query))
 
-        # query     =  self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
-        # positive  =  self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
-        # negatives = [self.resized_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
         query     =  self.query_transform(self._find_img_in_h5(query_index, 'queries'))
         positive  =  self.resized_transform(self._find_img_in_h5(best_positive_index, 'database'))
         negatives = [self.resized_transform(self._find_img_in_h5(i, 'database')) for i in neg_indexes]
