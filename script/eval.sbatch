@@ -6,7 +6,6 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=32GB
 #SBATCH --job-name=eval
-#SBATCH --output=eval_%j_%a.out
 
 eval "$(conda shell.bash hook)"
 conda activate VPR_SSL
@@ -34,4 +33,8 @@ fi
 if [ ${SLURM_ARRAY_TASK_ID} == 6 ]
 then
     python3 eval.py --resume='logs/default/'$1'/best_model.pth' --dataset_name=pitts250k --datasets_folder ./datasets
+fi
+if [ ${SLURM_ARRAY_TASK_ID} == 7 ]
+then
+    python3 eval.py --resume='logs/default/'$1'/best_model.pth' --dataset_name=eynsham --datasets_folder ./datasets
 fi
