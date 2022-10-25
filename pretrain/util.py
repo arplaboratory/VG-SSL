@@ -19,10 +19,11 @@ def resume_train(args, model, optimizer=None, strict=False):
     model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
     if optimizer:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-    accuracy = checkpoint['accuracy']
+    accuracy = checkpoint["accuracy"]
     not_improved_num = checkpoint["not_improved_num"]
-    logging.debug(f"Loaded checkpoint: start_epoch_num = {start_epoch_num}, " \
-                  f"current_accuracy = {accuracy:.4f}")
+    logging.debug(
+        f"Loaded checkpoint: start_epoch_num = {start_epoch_num}, "
+        f"current_accuracy = {accuracy:.4f}"
+    )
     shutil.copy(args.resume, args.output_folder)
     return model, optimizer, accuracy, start_epoch_num, not_improved_num
-
