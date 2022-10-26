@@ -83,10 +83,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--read_path",
         type=str,
-        help="The path of the folder that contains jpg or png images",
+        help="The path of the folder that contains jpg or png images"
     )
     parser.add_argument(
-        "--save_path", type=str, help="The path of the folder that stores h5 files"
+        "--save_path",
+        type=str,
+        help="The path of the folder that stores h5 files"
     )
     parser.add_argument("--resize_height", type=int, default=224)
     parser.add_argument("--resize_width", type=int, default=224)
