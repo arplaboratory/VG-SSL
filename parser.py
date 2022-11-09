@@ -160,7 +160,7 @@ def parse_arguments():
         help="Output dimension of fully connected layer. If None, don't use a fully connected layer.",
     )
     parser.add_argument(
-        "--freeze",
+        "--unfreeze",
         action='store_true',
         help="Unfreeze the first few layers for backbone",
     )
