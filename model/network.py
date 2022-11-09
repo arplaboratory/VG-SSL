@@ -139,7 +139,6 @@ def get_backbone(args):
         elif args.backbone.startswith("resnet101"):
             backbone = torchvision.models.resnet101(pretrained=True)
         if not args.unfreeze:
-            print('Freeze layers before conv_3')
             for name, child in backbone.named_children():
                 # Freeze layers before conv_3
                 if name == "layer3":
@@ -147,10 +146,16 @@ def get_backbone(args):
                 for params in child.parameters():
                     params.requires_grad = False
         if args.backbone.endswith("conv4"):
-            logging.debug(f"Train only conv4_x of the resnet{args.backbone.split('conv')[0]} (remove conv5_x), freeze the previous ones")
+            if not args.unfreeze:
+                logging.debug(f"Train only conv4_x of the resnet{args.backbone.split('conv')[0]} (remove conv5_x), freeze the previous ones")
+            else:
+                logging.debug(f"Train only conv4_x of the resnet{args.backbone.split('conv')[0]} (remove conv5_x)")
             layers = list(backbone.children())[:-3]
         elif args.backbone.endswith("conv5"):
-            logging.debug(f"Train only conv4_x and conv5_x of the resnet{args.backbone.split('conv')[0]}, freeze the previous ones")
+            if not args.unfreeze:
+                logging.debug(f"Train only conv4_x and conv5_x of the resnet{args.backbone.split('conv')[0]}, freeze the previous ones")
+            else:
+                logging.debug(f"Train only conv4_x and conv5_x of the resnet{args.backbone.split('conv')[0]}")
             layers = list(backbone.children())[:-2]
     elif args.backbone == "vgg16":
         if args.pretrain in ['places', 'gldv2']:
@@ -160,13 +165,19 @@ def get_backbone(args):
         layers = list(backbone.features.children())[:-2]
         for l in layers[:-5]:
             for p in l.parameters(): p.requires_grad = False
-        logging.debug("Train last layers of the vgg16, freeze the previous ones")
+        if not args.unfreeze:
+            logging.debug("Train last layers of the vgg16, freeze the previous ones")
+        else:
+            logging.debug("Train last layers of the vgg16")
     elif args.backbone == "alexnet":
         backbone = torchvision.models.alexnet(pretrained=True)
         layers = list(backbone.features.children())[:-2]
         for l in layers[:5]:
             for p in l.parameters(): p.requires_grad = False
-        logging.debug("Train last layers of the alexnet, freeze the previous ones")
+        if not args.unfreeze:
+            logging.debug("Train last layers of the alexnet, freeze the previous ones")
+        else:
+            logging.debug("Train last layers of the alexnet")
     elif args.backbone.startswith("cct"):
         if args.backbone.startswith("cct384"):
             backbone = cct_14_7x2_384(pretrained=True, progress=True, aggregation=args.aggregation)
