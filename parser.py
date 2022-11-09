@@ -10,6 +10,13 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--method",
+        type=str,
+        default='triplet',
+        choices=['triplet'],
+        help="Choose to use triplet or other methods"
+        )
+    parser.add_argument(
         "--train_batch_size",
         type=int,
         default=4,
@@ -153,10 +160,15 @@ def parse_arguments():
         help="Output dimension of fully connected layer. If None, don't use a fully connected layer.",
     )
     parser.add_argument(
+        "--freeze",
+        action='store_true',
+        help="Unfreeze the first few layers for backbone",
+    )
+    parser.add_argument(
         "--pretrain",
         type=str,
         default="imagenet",
-        choices=["imagenet", "gldv2", "places"],
+        choices=["imagenet", "gldv2", "places", "none"],
         help="Select the pretrained weights for the starting network",
     )
     parser.add_argument(

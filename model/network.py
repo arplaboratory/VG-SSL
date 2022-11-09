@@ -113,7 +113,16 @@ def get_pretrained_model(args):
         gdd.download_file_from_google_drive(file_id=PRETRAINED_MODELS[model_name],
                                             dest_path=file_path)
     state_dict = torch.load(file_path, map_location=torch.device('cpu'))
-    model.load_state_dict(state_dict)
+    if "model_state_dict" in state_dict:
+        state_dict = state_dict["model_state_dict"]
+        update_state_dict = dict()
+        for key, value in state_dict.items():
+            remove_prefix_key = key.replace('module.encoder.', '')
+            update_state_dict[remove_prefix_key] = value
+        update_state_dict.pop('fc.weight', None)
+        update_state_dict.pop('fc.bias', None)
+        state_dict = update_state_dict
+    model.load_state_dict(state_dict, strict=False)
     return model
 
 
@@ -129,12 +138,14 @@ def get_backbone(args):
             backbone = torchvision.models.resnet50(pretrained=True)
         elif args.backbone.startswith("resnet101"):
             backbone = torchvision.models.resnet101(pretrained=True)
-        for name, child in backbone.named_children():
-            # Freeze layers before conv_3
-            if name == "layer3":
-                break
-            for params in child.parameters():
-                params.requires_grad = False
+        if not args.unfreeze:
+            print('Freeze layers before conv_3')
+            for name, child in backbone.named_children():
+                # Freeze layers before conv_3
+                if name == "layer3":
+                    break
+                for params in child.parameters():
+                    params.requires_grad = False
         if args.backbone.endswith("conv4"):
             logging.debug(f"Train only conv4_x of the resnet{args.backbone.split('conv')[0]} (remove conv5_x), freeze the previous ones")
             layers = list(backbone.children())[:-3]
