@@ -324,3 +324,5 @@ def parse_arguments():
 
     if args.pca_dim != None and args.pca_dataset_folder == None:
         raise ValueError("Please specify --pca_dataset_folder when using pca")
+
+    return args
