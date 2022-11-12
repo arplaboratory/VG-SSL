@@ -389,8 +389,6 @@ class TripletsDataset(BaseDataset):
                 + "#night_indexes; [{len(night_indexes)}/{self.queries_num}]"
             )
 
-        self.ngpu = torch.cuda.device_count()
-
     def __getitem__(self, index):
         if self.is_inference:
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
