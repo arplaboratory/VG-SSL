@@ -539,6 +539,15 @@ class TripletsDataset(BaseDataset):
             args, model, subset_ds, (len(self), args.features_dim)
         )
 
+        if args.use_faiss_gpu:
+            # Tmp memory for faiss
+            self.gpu_resources = []
+            for i in range(1):
+                # 2 gpu resource for positive
+                res = faiss.StandardGpuResources()
+                res.setTempMemory(200 * 1024 * 1024)  # 200 MB
+                self.gpu_resources.append(res)
+
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
             query_features = self.get_query_features(query_index, cache)
@@ -560,6 +569,13 @@ class TripletsDataset(BaseDataset):
             self.triplets_global_indexes.append(
                 (query_index, best_positive_index, *neg_indexes)
             )
+
+        # Remove Tmp memory for faiss
+        if args.use_faiss_gpu:
+            del cache
+            del self.gpu_resources
+            torch.cuda.empty_cache()
+
         # self.triplets_global_indexes is a tensor of shape [1000, 12]
         self.triplets_global_indexes = torch.tensor(
             self.triplets_global_indexes)
