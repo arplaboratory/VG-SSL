@@ -206,7 +206,7 @@ def parse_arguments():
     parser.add_argument(
         "--resize",
         type=int,
-        default=[512, 512],
+        default=[480, 640],
         nargs=2,
         help="Resizing shape for images (HxW).",
     )
@@ -233,9 +233,9 @@ def parse_arguments():
     parser.add_argument("--efficient_ram_testing",
                         action="store_true", help="_")
     parser.add_argument("--val_positive_dist_threshold",
-                        type=int, default=100, help="_")
+                        type=int, default=25, help="_")
     parser.add_argument(
-        "--train_positives_dist_threshold", type=int, default=25, help="_"
+        "--train_positives_dist_threshold", type=int, default=10, help="_"
     )
     parser.add_argument(
         "--recall_values",
@@ -263,7 +263,7 @@ def parse_arguments():
     parser.add_argument(
         "--dataset_name",
         type=str,
-        default="foxtech_satellite",
+        default="pitts30k",
         help="Relative path of the dataset",
     )
     parser.add_argument(
@@ -324,8 +324,3 @@ def parse_arguments():
 
     if args.pca_dim != None and args.pca_dataset_folder == None:
         raise ValueError("Please specify --pca_dataset_folder when using pca")
-
-    if args.multi_process_mining and args.mining != 'full':
-        raise NotImplementedError(
-            "Multiprocessing mining can only be used for full mining at current stage")
-    return args
