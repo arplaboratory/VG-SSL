@@ -15,7 +15,12 @@ def parse_arguments():
         default='triplet',
         choices=['triplet'],
         help="Choose to use triplet or other methods"
-        )
+    )
+    parser.add_argument(
+        "--use_faiss_gpu",
+        action="store_true",
+        help="Choose if we use faiss gpu version for mining. Only work for full and partial."
+    )
     parser.add_argument(
         "--train_batch_size",
         type=int,
@@ -193,14 +198,15 @@ def parse_arguments():
         help="Path to load checkpoint from, for resuming training or testing.",
     )
     # Other parameters
-    parser.add_argument("--device", type=str, default="cuda", choices=["cuda", "cpu"])
+    parser.add_argument("--device", type=str,
+                        default="cuda", choices=["cuda", "cpu"])
     parser.add_argument(
         "--num_workers", type=int, default=8, help="num_workers for all dataloaders"
     )
     parser.add_argument(
         "--resize",
         type=int,
-        default=[480, 640],
+        default=[512, 512],
         nargs=2,
         help="Resizing shape for images (HxW).",
     )
@@ -224,10 +230,12 @@ def parse_arguments():
         default=0.01,
         help="only for majority voting, scale factor, the higher it is the more importance is given to agreement",
     )
-    parser.add_argument("--efficient_ram_testing", action="store_true", help="_")
-    parser.add_argument("--val_positive_dist_threshold", type=int, default=25, help="_")
+    parser.add_argument("--efficient_ram_testing",
+                        action="store_true", help="_")
+    parser.add_argument("--val_positive_dist_threshold",
+                        type=int, default=100, help="_")
     parser.add_argument(
-        "--train_positives_dist_threshold", type=int, default=10, help="_"
+        "--train_positives_dist_threshold", type=int, default=25, help="_"
     )
     parser.add_argument(
         "--recall_values",
@@ -241,10 +249,13 @@ def parse_arguments():
     parser.add_argument("--contrast", type=float, default=None, help="_")
     parser.add_argument("--saturation", type=float, default=None, help="_")
     parser.add_argument("--hue", type=float, default=None, help="_")
-    parser.add_argument("--rand_perspective", type=float, default=None, help="_")
+    parser.add_argument("--rand_perspective", type=float,
+                        default=None, help="_")
     parser.add_argument("--horizontal_flip", action="store_true", help="_")
-    parser.add_argument("--random_resized_crop", type=float, default=None, help="_")
-    parser.add_argument("--random_rotation", type=float, default=None, help="_")
+    parser.add_argument("--random_resized_crop",
+                        type=float, default=None, help="_")
+    parser.add_argument("--random_rotation", type=float,
+                        default=None, help="_")
     # Paths parameters
     parser.add_argument(
         "--datasets_folder", type=str, default=None, help="Path with all datasets"
@@ -252,7 +263,7 @@ def parse_arguments():
     parser.add_argument(
         "--dataset_name",
         type=str,
-        default="pitts30k",
+        default="foxtech_satellite",
         help="Relative path of the dataset",
     )
     parser.add_argument(
@@ -314,4 +325,7 @@ def parse_arguments():
     if args.pca_dim != None and args.pca_dataset_folder == None:
         raise ValueError("Please specify --pca_dataset_folder when using pca")
 
+    if args.multi_process_mining and args.mining != 'full':
+        raise NotImplementedError(
+            "Multiprocessing mining can only be used for full mining at current stage")
     return args
