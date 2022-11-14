@@ -14,7 +14,6 @@ from torch.utils.data.dataset import Subset
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.data.dataloader import DataLoader
 import h5py
-import time
 
 base_transform = transforms.Compose(
     [
@@ -808,6 +807,8 @@ class PairsDataset(BaseDataset):
             ]
         )
 
+        self.database_transform = self.query_transform
+
         # Find hard_positives_per_query, which are within train_positives_dist_threshold (10 meters)
         knn = NearestNeighbors(n_jobs=-1)
         knn.fit(self.database_utms)
@@ -891,11 +892,11 @@ class PairsDataset(BaseDataset):
 
         query = self.query_transform(
             self._find_img_in_h5(query_index, "queries"))
-        positive = self.resized_transform(
+        positive = self.database_transform(
             self._find_img_in_h5(best_positive_index, "database")
         )
         negatives = [
-            self.resized_transform(self._find_img_in_h5(i, "database"))
+            self.database_transform(self._find_img_in_h5(i, "database"))
             for i in neg_indexes
         ]
         images = torch.stack((query, positive, *negatives), 0)
