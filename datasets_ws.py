@@ -807,7 +807,10 @@ class PairsDataset(BaseDataset):
             ]
         )
 
-        self.database_transform = self.query_transform
+        if args.use_database_aug:
+            self.database_transform = self.query_transform
+        else:
+            self.database_transform = self.resized_transform
 
         # Find hard_positives_per_query, which are within train_positives_dist_threshold (10 meters)
         knn = NearestNeighbors(n_jobs=-1)
