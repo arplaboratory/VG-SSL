@@ -22,6 +22,11 @@ def parse_arguments():
         help="Choose if we use faiss gpu version for mining. Only work for full and partial."
     )
     parser.add_argument(
+        "--use_database_aug",
+        action="store_true",
+        help="Choose if we use use_database_aug."
+    )
+    parser.add_argument(
         "--train_batch_size",
         type=int,
         default=4,
