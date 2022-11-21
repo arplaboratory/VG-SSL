@@ -324,6 +324,11 @@ class TripletsDataset(BaseDataset):
             ]
         )
 
+        if args.use_database_aug:
+            self.database_transform = self.query_transform
+        else:
+            self.database_transform = self.resized_transform
+            
         # Find hard_positives_per_query, which are within train_positives_dist_threshold (10 meters)
         knn = NearestNeighbors(n_jobs=-1)
         knn.fit(self.database_utms)
@@ -407,11 +412,11 @@ class TripletsDataset(BaseDataset):
 
         query = self.query_transform(
             self._find_img_in_h5(query_index, "queries"))
-        positive = self.resized_transform(
+        positive = self.database_transform(
             self._find_img_in_h5(best_positive_index, "database")
         )
         negatives = [
-            self.resized_transform(self._find_img_in_h5(i, "database"))
+            self.database_transform(self._find_img_in_h5(i, "database"))
             for i in neg_indexes
         ]
         images = torch.stack((query, positive, *negatives), 0)
@@ -540,8 +545,9 @@ class TripletsDataset(BaseDataset):
 
         if args.use_faiss_gpu:
             # Tmp memory for faiss
+            torch.cuda.empty_cache()
             self.gpu_resources = []
-            for i in range(1):
+            for i in range(2):
                 # 2 gpu resource for positive
                 res = faiss.StandardGpuResources()
                 res.setTempMemory(200 * 1024 * 1024)  # 200 MB
@@ -564,7 +570,7 @@ class TripletsDataset(BaseDataset):
             neg_indexes = np.setdiff1d(neg_indexes, soft_positives, assume_unique=True)[
                 : self.negs_num_per_query
             ]
-
+            
             self.triplets_global_indexes.append(
                 (query_index, best_positive_index, *neg_indexes)
             )
@@ -598,6 +604,7 @@ class TripletsDataset(BaseDataset):
 
         if args.use_faiss_gpu:
             # Tmp memory for faiss
+            torch.cuda.empty_cache()
             self.gpu_resources = []
             for i in range(2):
                 # 2 gpu resource for positive and negative
@@ -678,6 +685,7 @@ class TripletsDataset(BaseDataset):
 
         if args.use_faiss_gpu:
             # Tmp memory for faiss
+            torch.cuda.empty_cache()
             self.gpu_resources = []
             for i in range(2):
                 # 2 gpu resource for positive and negative
