@@ -29,13 +29,13 @@ def parse_arguments():
     parser.add_argument(
         "--train_batch_size",
         type=int,
-        default=4,
+        default=10,
         help="Number of triplets (query, pos, negs) in a batch. Each triplet consists of 12 images",
     )
     parser.add_argument(
         "--infer_batch_size",
         type=int,
-        default=16,
+        default=128,
         help="Batch size for inference (caching and testing)",
     )
     parser.add_argument(
