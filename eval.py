@@ -50,11 +50,6 @@ OFF_THE_SHELF_NAVER = {
 args = parser.parse_arguments()
 start_time = datetime.now()
 model_name = args.resume.split('/')[-2]
-if not os.path.isdir(join("test", args.save_dir, model_name)):
-    try:
-        os.mkdir(join("test", args.save_dir, model_name))
-    finally:
-        pass
 args.save_dir = join(
     "test",
     args.save_dir,
