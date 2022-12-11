@@ -462,7 +462,7 @@ class TripletsDataset(BaseDataset):
         # RAMEfficient2DMatrix can be replaced by np.zeros, but using
         # RAMEfficient2DMatrix is RAM efficient for full database mining.
         if args.use_faiss_gpu:
-            cache = torch.zeros(cache_shape).to(args.device)
+            cache = RAMEfficient2DMatrixGPU(cache_shape, dtype=torch.float32, device=args.device)
         else:
             cache = RAMEfficient2DMatrix(cache_shape, dtype=np.float32)
         
@@ -575,8 +575,8 @@ class TripletsDataset(BaseDataset):
                 (query_index, best_positive_index, *neg_indexes)
             )
 
-        del cache
         # Remove Tmp memory for faiss
+        del cache
         if args.use_faiss_gpu:
             del self.gpu_resources
             torch.cuda.empty_cache()
@@ -638,8 +638,8 @@ class TripletsDataset(BaseDataset):
             self.neg_cache[query_index] = neg_indexes
             self.triplets_global_indexes.append((query_index, best_positive_index, *neg_indexes))
 
-        del cache
         # Remove Tmp memory for faiss
+        del cache
         if args.use_faiss_gpu:
             del self.gpu_resources
             torch.cuda.empty_cache()
@@ -714,8 +714,8 @@ class TripletsDataset(BaseDataset):
                 (query_index, best_positive_index, *neg_indexes)
             )
 
-        del cache
         # Remove Tmp memory for faiss
+        del cache
         if args.use_faiss_gpu:
             del self.gpu_resources
             torch.cuda.empty_cache()
@@ -736,6 +736,9 @@ class RAMEfficient2DMatrix:
         self.dtype = dtype
         self.matrix = [None] * shape[0]
 
+    def __len__(self):
+        return len(self.matrix)
+
     def __setitem__(self, indexes, vals):
         assert vals.shape[1] == self.shape[1], f"{vals.shape[1]} {self.shape[1]}"
         for i, val in zip(indexes, vals):
@@ -744,6 +747,33 @@ class RAMEfficient2DMatrix:
     def __getitem__(self, index):
         if hasattr(index, "__len__"):
             return np.array([self.matrix[i] for i in index])
+        else:
+            return self.matrix[index]
+
+class RAMEfficient2DMatrixGPU:
+    """This class behaves similarly to a numpy.ndarray initialized
+    with np.zeros(), but is implemented to save RAM when the rows
+    within the 2D array are sparse. In this case it's needed because
+    we don't always compute features for each image, just for few of
+    them"""
+
+    def __init__(self, shape, dtype=torch.float32, device=None):
+        self.shape = shape
+        self.dtype = dtype
+        self.device = device
+        self.matrix = [None] * shape[0]
+
+    def __len__(self):
+        return len(self.matrix)
+
+    def __setitem__(self, indexes, vals):
+        assert vals.shape[1] == self.shape[1], f"{vals.shape[1]} {self.shape[1]}"
+        for i, val in zip(indexes, vals):
+            self.matrix[i] = val.type(self.dtype).to(self.device)
+
+    def __getitem__(self, index):
+        if hasattr(index, "__len__"):
+            return torch.stack([self.matrix[i] for i in index])
         else:
             return self.matrix[index]
 
