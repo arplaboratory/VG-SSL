@@ -13,8 +13,8 @@ def parse_arguments():
         "--method",
         type=str,
         default='triplet',
-        choices=['triplet'],
-        help="Choose to use triplet or other methods"
+        choices=['triplet', 'pair'],
+        help="Choose to use triplet or pair"
     )
     parser.add_argument(
         "--use_faiss_gpu",

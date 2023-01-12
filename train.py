@@ -47,7 +47,7 @@ if args.method == 'triplet':
     train_ds = datasets_ws.TripletsDataset(
         args, args.datasets_folder, args.dataset_name, "train", args.negs_num_per_query
     )
-elif args.method == 'simclr':
+elif args.method == 'pair':
     train_ds = datasets_ws.PairsDataset(
         args, args.datasets_folder, args.dataset_name, "train"
     )
@@ -119,13 +119,19 @@ else:
             model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
         )
 
-if args.criterion == "triplet":
-    criterion_triplet = nn.TripletMarginLoss(
-        margin=args.margin, p=2, reduction="sum")
-elif args.criterion == "sare_ind":
-    criterion_triplet = sare_ind
-elif args.criterion == "sare_joint":
-    criterion_triplet = sare_joint
+if args.method == "triplet":
+    if args.criterion == "triplet":
+        criterion_triplet = nn.TripletMarginLoss(
+            margin=args.margin, p=2, reduction="sum")
+    elif args.criterion == "sare_ind":
+        criterion_triplet = sare_ind
+    elif args.criterion == "sare_joint":
+        criterion_triplet = sare_joint
+    else:
+        raise NotImplementedError("Criterion not found for triplets!")
+elif args.method == "pair":
+    # TODO: Add pair loss criterion here
+    raise NotImplementedError("Criterion not found for pairs!")
 
 # Resume model, optimizer, and other training parameters
 if args.resume:
@@ -174,93 +180,144 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
     for loop_num in range(loops_num):
         logging.debug(f"Cache: {loop_num} / {loops_num}")
 
-        # Compute triplets to use in the triplet loss
         if args.method == "triplet":
+            # Compute triplets to use in the triplet loss
             train_ds.is_inference = True
             train_ds.compute_triplets(args, model)
             train_ds.is_inference = False
-        else:
-            raise NotImplementedError()
+            triplets_dl = DataLoader(
+                dataset=train_ds,
+                num_workers=args.num_workers,
+                batch_size=args.train_batch_size,
+                collate_fn=datasets_ws.collate_fn,
+                pin_memory=(args.device == "cuda"),
+                drop_last=True,
+            )
+        elif args.method == 'pairs':
+            # Compute pairs to use in the triplet loss
+            train_ds.is_inference = True
+            train_ds.compute_pairs(args, model)
+            train_ds.is_inference = False
+            pairs_dl = DataLoader(
+                dataset=train_ds,
+                num_workers=args.num_workers,
+                batch_size=args.train_batch_size,
+                collate_fn=datasets_ws.collate_fn,
+                pin_memory=(args.device == "cuda"),
+                drop_last=True,
+            )
 
         if args.use_faiss_gpu:
             torch.cuda.empty_cache()
-
-        triplets_dl = DataLoader(
-            dataset=train_ds,
-            num_workers=args.num_workers,
-            batch_size=args.train_batch_size,
-            collate_fn=datasets_ws.collate_fn,
-            pin_memory=(args.device == "cuda"),
-            drop_last=True,
-        )
 
         torch.cuda.empty_cache()
         model = model.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
         # triplets_local_indexes shape: (train_batch_size*10)*3 ; because 10 triplets per query
-        for images, triplets_local_indexes, _ in tqdm(triplets_dl, ncols=100):
+        if args.method == "triplet":
+            for images, triplets_local_indexes, _ in tqdm(triplets_dl, ncols=100):
 
-            # Flip all triplets or none
-            if args.horizontal_flip:
-                images = transforms.RandomHorizontalFlip()(images)
+                # Flip all triplets or none
+                if args.horizontal_flip:
+                    images = transforms.RandomHorizontalFlip()(images)
 
-            # Compute features of all images (images contains queries, positives and negatives)
-            features = model(images.to(args.device))
-            loss_triplet = 0
+                # Compute features of all images (images contains queries, positives and negatives)
+                features = model(images.to(args.device))
+                loss_triplet = 0
 
-            if args.criterion == "triplet":
-                triplets_local_indexes = torch.transpose(
-                    triplets_local_indexes.view(
-                        args.train_batch_size, args.negs_num_per_query, 3
-                    ),
-                    1,
-                    0,
-                )
-                for triplets in triplets_local_indexes:
-                    queries_indexes, positives_indexes, negatives_indexes = triplets.T
-                    loss_triplet += criterion_triplet(
-                        features[queries_indexes],
-                        features[positives_indexes],
-                        features[negatives_indexes],
+                if args.criterion == "triplet":
+                    triplets_local_indexes = torch.transpose(
+                        triplets_local_indexes.view(
+                            args.train_batch_size, args.negs_num_per_query, 3
+                        ),
+                        1,
+                        0,
                     )
-            elif args.criterion == "sare_joint":
-                # sare_joint needs to receive all the negatives at once
-                triplet_index_batch = triplets_local_indexes.view(
-                    args.train_batch_size, 10, 3
-                )
-                for batch_triplet_index in triplet_index_batch:
-                    q = features[batch_triplet_index[0, 0]].unsqueeze(
-                        0
-                    )  # obtain query as tensor of shape 1xn_features
-                    p = features[batch_triplet_index[0, 1]].unsqueeze(
-                        0
-                    )  # obtain positive as tensor of shape 1xn_features
-                    n = features[
-                        batch_triplet_index[:, 2]
-                    ]  # obtain negatives as tensor of shape 10xn_features
-                    loss_triplet += criterion_triplet(q, p, n)
-            elif args.criterion == "sare_ind":
-                for triplet in triplets_local_indexes:
-                    # triplet is a 1-D tensor with the 3 scalars indexes of the triplet
-                    q_i, p_i, n_i = triplet
-                    loss_triplet += criterion_triplet(
-                        features[q_i: q_i + 1],
-                        features[p_i: p_i + 1],
-                        features[n_i: n_i + 1],
+                    for triplets in triplets_local_indexes:
+                        queries_indexes, positives_indexes, negatives_indexes = triplets.T
+                        loss_triplet += criterion_triplet(
+                            features[queries_indexes],
+                            features[positives_indexes],
+                            features[negatives_indexes],
+                        )
+                elif args.criterion == "sare_joint":
+                    # sare_joint needs to receive all the negatives at once
+                    triplet_index_batch = triplets_local_indexes.view(
+                        args.train_batch_size, 10, 3
                     )
+                    for batch_triplet_index in triplet_index_batch:
+                        q = features[batch_triplet_index[0, 0]].unsqueeze(
+                            0
+                        )  # obtain query as tensor of shape 1xn_features
+                        p = features[batch_triplet_index[0, 1]].unsqueeze(
+                            0
+                        )  # obtain positive as tensor of shape 1xn_features
+                        n = features[
+                            batch_triplet_index[:, 2]
+                        ]  # obtain negatives as tensor of shape 10xn_features
+                        loss_triplet += criterion_triplet(q, p, n)
+                elif args.criterion == "sare_ind":
+                    for triplet in triplets_local_indexes:
+                        # triplet is a 1-D tensor with the 3 scalars indexes of the triplet
+                        q_i, p_i, n_i = triplet
+                        loss_triplet += criterion_triplet(
+                            features[q_i: q_i + 1],
+                            features[p_i: p_i + 1],
+                            features[n_i: n_i + 1],
+                        )
 
-            del features
-            loss_triplet /= args.train_batch_size * args.negs_num_per_query
+                del features
+                loss_triplet /= args.train_batch_size * args.negs_num_per_query
 
-            optimizer.zero_grad()
-            loss_triplet.backward()
-            optimizer.step()
+                optimizer.zero_grad()
+                loss_triplet.backward()
+                optimizer.step()
 
-            # Keep track of all losses by appending them to epoch_losses
-            batch_loss = loss_triplet.item()
-            epoch_losses = np.append(epoch_losses, batch_loss)
-            del loss_triplet
+                # Keep track of all losses by appending them to epoch_losses
+                batch_loss = loss_triplet.item()
+                epoch_losses = np.append(epoch_losses, batch_loss)
+                del loss_triplet
+
+        elif args.method == "pairs":
+            for images, pairs_local_indexes, _ in tqdm(pairs_dl, ncols=100):
+
+                # Flip all pairs or none
+                if args.horizontal_flip:
+                    images = transforms.RandomHorizontalFlip()(images)
+
+                # Compute features of all images (images contains queries, positives and negatives)
+                features = model(images.to(args.device))
+                loss_pairs = 0
+
+                # TODO: loss function
+                # if args.criterion == "pairs":
+                #     pairs_local_indexes = torch.transpose(
+                #         pairs_local_indexes.view(
+                #             args.train_batch_size, 2
+                #         ),
+                #         1,
+                #         0,
+                #     )
+                #     for pairs in pairs_local_indexes:
+                #         queries_indexes, positives_indexes = pairs.T
+                #         loss_pairs += criterion_pairs(
+                #             features[queries_indexes],
+                #             features[positives_indexes],
+                #             features[negatives_indexes],
+                #         )
+
+                del features
+                loss_pairs /= args.train_batch_size
+
+                optimizer.zero_grad()
+                loss_pairs.backward()
+                optimizer.step()
+
+                # Keep track of all losses by appending them to epoch_losses
+                batch_loss = loss_pairs.item()
+                epoch_losses = np.append(epoch_losses, batch_loss)
+                del loss_pairs
 
         logging.debug(
             f"Epoch[{epoch_num:02d}]({loop_num}/{loops_num}): "
