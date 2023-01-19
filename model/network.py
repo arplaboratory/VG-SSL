@@ -26,6 +26,9 @@ PRETRAINED_MODELS = {
     'vgg16_gldv2'      : '10Ov9JdO7gbyz6mB5x0v_VSAUMj91Ta4o'
 }
 
+PRETRAINED_SSL_MODELS = {
+    'resnet50_simclr' : 'simclr-resnet50'  
+}
 
 class GeoLocalizationNet(nn.Module):
     """The used networks are composed of a backbone and an aggregation layer.
@@ -93,7 +96,14 @@ def get_aggregation(args):
 def get_pretrained_model(args):
     if args.pretrain == 'places':  num_classes = 365
     elif args.pretrain == 'gldv2':  num_classes = 512
+    elif args.pretrain == 'simclr': num_classes = 1000
+    else:
+        raise NotImplementedError()
     
+    # Check SSL model backbone
+    if args.pretrain == 'simclr':
+        assert(args.backbone.startswith("resnet50"))
+
     if args.backbone.startswith("resnet18"):
         model = torchvision.models.resnet18(num_classes=num_classes)
     elif args.backbone.startswith("resnet50"):
@@ -107,11 +117,15 @@ def get_pretrained_model(args):
         model_name = args.backbone.split('conv')[0] + "_" + args.pretrain
     else:
         model_name = args.backbone + "_" + args.pretrain
-    file_path = join("data", "pretrained_nets", model_name +".pth")
-    
-    if not os.path.exists(file_path):
-        gdd.download_file_from_google_drive(file_id=PRETRAINED_MODELS[model_name],
-                                            dest_path=file_path)
+
+    if args.pretrain in PRETRAINED_SSL_MODELS:
+        file_path = join("pretrained", PRETRAINED_SSL_MODELS[args.pretrain] + ".pth")
+        if not os.path.exists(file_path):
+            gdd.download_file_from_google_drive(file_id=PRETRAINED_MODELS[model_name],
+                                                dest_path=file_path)
+    else:
+        file_path = join("data", "pretrained_nets", model_name +".pth")
+
     state_dict = torch.load(file_path, map_location=torch.device('cpu'))
     if "model_state_dict" in state_dict:
         state_dict = state_dict["model_state_dict"]
