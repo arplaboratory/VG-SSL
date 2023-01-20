@@ -120,11 +120,11 @@ def get_pretrained_model(args):
 
     if args.pretrain in PRETRAINED_SSL_MODELS:
         file_path = join("pretrained", PRETRAINED_SSL_MODELS[args.pretrain] + ".pth")
+    else:
+        file_path = join("data", "pretrained_nets", model_name +".pth")
         if not os.path.exists(file_path):
             gdd.download_file_from_google_drive(file_id=PRETRAINED_MODELS[model_name],
                                                 dest_path=file_path)
-    else:
-        file_path = join("data", "pretrained_nets", model_name +".pth")
 
     state_dict = torch.load(file_path, map_location=torch.device('cpu'))
     if "model_state_dict" in state_dict:
