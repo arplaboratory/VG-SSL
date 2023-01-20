@@ -27,7 +27,7 @@ PRETRAINED_MODELS = {
 }
 
 PRETRAINED_SSL_MODELS = {
-    'resnet50_simclr' : 'simclr-resnet50'  
+    'simclr' : 'simclr-resnet50'  
 }
 
 class GeoLocalizationNet(nn.Module):
@@ -144,7 +144,7 @@ def get_backbone(args):
     # The aggregation layer works differently based on the type of architecture
     args.work_with_tokens = args.backbone.startswith('cct') or args.backbone.startswith('vit')
     if args.backbone.startswith("resnet"):
-        if args.pretrain in ['places', 'gldv2']:
+        if args.pretrain in ['places', 'gldv2', 'simclr']:
             backbone = get_pretrained_model(args)
         elif args.backbone.startswith("resnet18"):
             backbone = torchvision.models.resnet18(pretrained=True)
