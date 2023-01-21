@@ -29,7 +29,8 @@ PRETRAINED_MODELS = {
 PRETRAINED_SSL_MODELS = {
     'simclr' : 'simclr-resnet50',
     'byol': 'byol-resnet50',
-    'vicreg': 'vicreg-resnet50'
+    'vicreg': 'vicreg-resnet50',
+    'swav': 'swav-resnet50'
 }
 
 class GeoLocalizationNet(nn.Module):
@@ -98,14 +99,12 @@ def get_aggregation(args):
 def get_pretrained_model(args):
     if args.pretrain == 'places':  num_classes = 365
     elif args.pretrain == 'gldv2':  num_classes = 512
-    elif args.pretrain == 'simclr': num_classes = 1000
-    elif args.pretrain == 'byol': num_classes = 1000
-    elif args.pretrain == 'vicreg': num_classes = 1000
+    elif args.pretrain in PRETRAINED_SSL_MODELS: num_classes = 1000
     else:
         raise NotImplementedError()
     
     # Check SSL model backbone
-    if args.pretrain == 'simclr' or args.pretrain == 'byol' or args.pretrain == 'vicreg':
+    if args.pretrain in PRETRAINED_SSL_MODELS:
         assert(args.backbone.startswith("resnet50"))
 
     if args.backbone.startswith("resnet18"):
@@ -127,19 +126,16 @@ def get_pretrained_model(args):
         state_dict = torch.load(file_path, map_location=torch.device('cpu'))
         if args.pretrain == 'simclr':
             state_dict = state_dict['state_dict']
-        elif args.pretrain == 'byol':
+        elif args.pretrain == 'byol' or args.pretrain == 'vicreg':
             state_dict = state_dict
-        else:
-            raise NotImplementedError()
-        if "model_state_dict" in state_dict:
-            state_dict = state_dict["model_state_dict"]
+        elif args.pretrain == 'swav':
             update_state_dict = dict()
             for key, value in state_dict.items():
-                remove_prefix_key = key.replace('module.encoder.', '')
+                remove_prefix_key = key.replace('module.', '')
                 update_state_dict[remove_prefix_key] = value
-            update_state_dict.pop('fc.weight', None)
-            update_state_dict.pop('fc.bias', None)
             state_dict = update_state_dict
+        else:
+            raise NotImplementedError()
         model.load_state_dict(state_dict, strict=False)
     else:
         file_path = join("data", "pretrained_nets", model_name +".pth")
@@ -164,7 +160,7 @@ def get_backbone(args):
     # The aggregation layer works differently based on the type of architecture
     args.work_with_tokens = args.backbone.startswith('cct') or args.backbone.startswith('vit')
     if args.backbone.startswith("resnet"):
-        if args.pretrain in ['places', 'gldv2', 'simclr', 'byol', 'vicreg']:
+        if args.pretrain in ['places', 'gldv2', 'simclr', 'byol', 'vicreg', 'swav']:
             backbone = get_pretrained_model(args)
         elif args.backbone.startswith("resnet18"):
             backbone = torchvision.models.resnet18(pretrained=True)
