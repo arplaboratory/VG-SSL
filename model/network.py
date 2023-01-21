@@ -28,7 +28,8 @@ PRETRAINED_MODELS = {
 
 PRETRAINED_SSL_MODELS = {
     'simclr' : 'simclr-resnet50',
-    'byol': 'byol-resnet50'
+    'byol': 'byol-resnet50',
+    'vicreg': 'vicreg-resnet50'
 }
 
 class GeoLocalizationNet(nn.Module):
@@ -99,11 +100,12 @@ def get_pretrained_model(args):
     elif args.pretrain == 'gldv2':  num_classes = 512
     elif args.pretrain == 'simclr': num_classes = 1000
     elif args.pretrain == 'byol': num_classes = 1000
+    elif args.pretrain == 'vicreg': num_classes = 1000
     else:
         raise NotImplementedError()
     
     # Check SSL model backbone
-    if args.pretrain == 'simclr' or args.pretrain == 'byol':
+    if args.pretrain == 'simclr' or args.pretrain == 'byol' or args.pretrain == 'vicreg':
         assert(args.backbone.startswith("resnet50"))
 
     if args.backbone.startswith("resnet18"):
@@ -162,7 +164,7 @@ def get_backbone(args):
     # The aggregation layer works differently based on the type of architecture
     args.work_with_tokens = args.backbone.startswith('cct') or args.backbone.startswith('vit')
     if args.backbone.startswith("resnet"):
-        if args.pretrain in ['places', 'gldv2', 'simclr', 'byol']:
+        if args.pretrain in ['places', 'gldv2', 'simclr', 'byol', 'vicreg']:
             backbone = get_pretrained_model(args)
         elif args.backbone.startswith("resnet18"):
             backbone = torchvision.models.resnet18(pretrained=True)

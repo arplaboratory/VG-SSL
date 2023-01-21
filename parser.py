@@ -178,7 +178,7 @@ def parse_arguments():
         "--pretrain",
         type=str,
         default="imagenet",
-        choices=["imagenet", "gldv2", "places", "none", "simclr", "byol"],
+        choices=["imagenet", "gldv2", "places", "none", "simclr", "byol", "vicreg"],
         help="Select the pretrained weights for the starting network",
     )
     parser.add_argument(
