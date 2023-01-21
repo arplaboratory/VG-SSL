@@ -30,7 +30,8 @@ PRETRAINED_SSL_MODELS = {
     'simclr' : 'simclr-resnet50',
     'byol': 'byol-resnet50',
     'vicreg': 'vicreg-resnet50',
-    'swav': 'swav-resnet50'
+    'swav': 'swav-resnet50',
+    'bt': 'bt-resnet50'
 }
 
 class GeoLocalizationNet(nn.Module):
@@ -126,7 +127,7 @@ def get_pretrained_model(args):
         state_dict = torch.load(file_path, map_location=torch.device('cpu'))
         if args.pretrain == 'simclr':
             state_dict = state_dict['state_dict']
-        elif args.pretrain == 'byol' or args.pretrain == 'vicreg':
+        elif args.pretrain == 'byol' or args.pretrain == 'vicreg' or args.pretrain == 'bt':
             state_dict = state_dict
         elif args.pretrain == 'swav':
             update_state_dict = dict()
@@ -160,7 +161,7 @@ def get_backbone(args):
     # The aggregation layer works differently based on the type of architecture
     args.work_with_tokens = args.backbone.startswith('cct') or args.backbone.startswith('vit')
     if args.backbone.startswith("resnet"):
-        if args.pretrain in ['places', 'gldv2', 'simclr', 'byol', 'vicreg', 'swav']:
+        if args.pretrain in ['places', 'gldv2', 'simclr', 'byol', 'vicreg', 'swav', 'bt']:
             backbone = get_pretrained_model(args)
         elif args.backbone.startswith("resnet18"):
             backbone = torchvision.models.resnet18(pretrained=True)
