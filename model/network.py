@@ -122,13 +122,13 @@ def get_pretrained_model(args):
 
     if args.pretrain in PRETRAINED_SSL_MODELS:
         file_path = join("pretrained", PRETRAINED_SSL_MODELS[args.pretrain] + ".pth")
+        state_dict = torch.load(file_path, map_location=torch.device('cpu'))
         if args.pretrain == 'simclr':
             state_dict = state_dict['state_dict']
         elif args.pretrain == 'byol':
             state_dict = state_dict
         else:
             raise NotImplementedError()
-        state_dict = torch.load(file_path, map_location=torch.device('cpu'))
         if "model_state_dict" in state_dict:
             state_dict = state_dict["model_state_dict"]
             update_state_dict = dict()
