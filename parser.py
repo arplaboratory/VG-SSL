@@ -178,7 +178,7 @@ def parse_arguments():
         "--pretrain",
         type=str,
         default="imagenet",
-        choices=["imagenet", "gldv2", "places", "none", "simclr", "byol", "vicreg", "swav", "bt"],
+        choices=["imagenet", "gldv2", "places", "none", "simclr", "byol", "vicreg", "swav", "bt", "moco", "mocov2"],
         help="Select the pretrained weights for the starting network",
     )
     parser.add_argument(
@@ -195,7 +195,7 @@ def parse_arguments():
         "--freeze_te", type=int, default=None, choices=list(range(-1, 14))
     )
     # Initialization parameters
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=2)
     parser.add_argument(
         "--resume",
         type=str,
@@ -206,7 +206,7 @@ def parse_arguments():
     parser.add_argument("--device", type=str,
                         default="cuda", choices=["cuda", "cpu"])
     parser.add_argument(
-        "--num_workers", type=int, default=8, help="num_workers for all dataloaders"
+        "--num_workers", type=int, default=24, help="num_workers for all dataloaders"
     )
     parser.add_argument(
         "--resize",
