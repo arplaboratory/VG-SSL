@@ -195,7 +195,7 @@ def parse_arguments():
         "--freeze_te", type=int, default=None, choices=list(range(-1, 14))
     )
     # Initialization parameters
-    parser.add_argument("--seed", type=int, default=2)
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--resume",
         type=str,
