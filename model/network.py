@@ -13,6 +13,7 @@ from model.aggregation import Flatten
 from model.normalization import L2Norm
 import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
+from model.byol.byol_pytorch import BYOL
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
@@ -261,7 +262,39 @@ def get_backbone(args):
     return backbone
 
 
-def get_output_channels_dim(model):
-    """Return the number of channels in the output of a model."""
-    return model(torch.ones([1, 3, 224, 224])).shape[1]
+class SSLGeoLocalizationNet():
+    """The used networks are composed of a backbone and an aggregation layer.
+    """
+    def __init__(self, args):
+        super().__init__()
+        self.backbone = get_backbone(args)
+        self.arch_name = args.backbone
+        self.return_loss = False
+        self.ssl_method = args.ssl_method
+        self.model = self.get_ssl_model()
 
+    def get_ssl_model(self):
+        if args.ssl_method == "byol":
+            self.retrun_loss = True
+            return BYOL(self.backbone,
+                        image_size = 256,
+                        hidden_layer = 'avgpool')
+        else:
+            raise NotImplementedError()
+
+    def setup(self, args):
+        self.model.to(args.device)
+        if torch.cuda.device_count() >= 2:
+            # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
+            self.model = convert_model(self.model)
+            self.model = self.model.cuda()
+
+    def forward(self, x, return_feature=False):
+        if return_feature:
+            if self.ssl_method == "byol":
+                feature = self.model(x, return_embedding=True)
+            else:
+                raise NotImplementedError()
+            return feature
+        x = self.model(x)
+        return x

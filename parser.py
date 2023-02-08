@@ -10,6 +10,13 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--ssl_method",
+        type=str,
+        default='simclr',
+        choices=['byol', 'simclr'],
+        help="Choose to use triplet or pair"
+    )
+    parser.add_argument(
         "--method",
         type=str,
         default='triplet',
