@@ -29,13 +29,13 @@ def parse_arguments():
     parser.add_argument(
         "--train_batch_size",
         type=int,
-        default=10,
+        default=4,
         help="Number of triplets (query, pos, negs) in a batch. Each triplet consists of 12 images",
     )
     parser.add_argument(
         "--infer_batch_size",
         type=int,
-        default=128,
+        default=16,
         help="Batch size for inference (caching and testing)",
     )
     parser.add_argument(
@@ -49,9 +49,9 @@ def parse_arguments():
         "--margin", type=float, default=0.1, help="margin for the triplet loss"
     )
     parser.add_argument(
-        "--epochs_num", type=int, default=1000, help="number of epochs to train for"
+        "--epochs_num", type=int, default=40, help="number of epochs to train for"
     )
-    parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--patience", type=int, default=40)
     parser.add_argument("--lr", type=float, default=0.00001, help="_")
     parser.add_argument(
         "--lr_crn_layer",

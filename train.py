@@ -17,6 +17,7 @@ from os.path import join, isdir
 from datetime import datetime
 import torchvision.transforms as transforms
 from torch.utils.data.dataloader import DataLoader
+import wandb
 from uuid import uuid4
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
@@ -33,6 +34,7 @@ args.save_dir = join(
 commons.setup_logging(args.save_dir)
 commons.make_deterministic(args.seed)
 logging.info(f"Arguments: {args}")
+wandb.init(project="vg-ssl", entity="vg-ssl", config=vars(args))
 logging.info(f"The outputs are being saved in {args.save_dir}")
 logging.info(
     f"Using {torch.cuda.device_count()} GPUs and {multiprocessing.cpu_count()} CPUs"
@@ -210,7 +212,6 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         if args.use_faiss_gpu:
             torch.cuda.empty_cache()
 
-        torch.cuda.empty_cache()
         model = model.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
@@ -350,6 +351,14 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         is_best,
         filename="last_model.pth",
     )
+
+    wandb.log({
+        "epoch_num": epoch_num,
+        "recall1": recalls[0],
+        "recall5": recalls[1],
+        "best_r5": recalls[1] if is_best else best_r5,
+        "sum_loss": epoch_losses.mean(),
+    },)
 
     # If recall@5 did not improve for "many" epochs, stop training
     if is_best:
