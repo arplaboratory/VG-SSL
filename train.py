@@ -337,3 +337,7 @@ model.load_state_dict(best_model_state_dict)
 recalls, recalls_str = test.test(
     args, test_ds, model, test_method=args.test_method)
 logging.info(f"Recalls on {test_ds}: {recalls_str}")
+wandb.log({
+    "final_recall1": recalls[0],
+    "final_recall5": recalls[1],
+},)
