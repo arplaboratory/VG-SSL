@@ -4,9 +4,9 @@
 #SBATCH --cpus-per-task=24                # uses 1 compute core per task
 #SBATCH --time=24:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --mem=128GB
-#SBATCH --job-name=train_pitts30k_full
-#SBATCH --output=train_pitts30k_full.out
+#SBATCH --mem=100GB
+#SBATCH --job-name=train_pitts30k_partial
+#SBATCH --output=train_pitts30k_partial.out
 
 eval "$(conda shell.bash hook)"
 conda activate VPR_SSL
