@@ -271,6 +271,7 @@ class SSLGeoLocalizationNet():
     def __init__(self, args):
         super().__init__()
         self.backbone = get_backbone(args)
+        self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone
         self.return_loss = False
         self.ssl_method = args.ssl_method
@@ -280,8 +281,9 @@ class SSLGeoLocalizationNet():
         if args.ssl_method == "byol":
             self.retrun_loss = True
             return BYOL(self.backbone,
-                        image_size = 256,
-                        hidden_layer = 'avgpool')
+                        image_size = 480,
+                        hidden_layer = -1,
+                        aggregation = aggregation)
         else:
             raise NotImplementedError()
 
