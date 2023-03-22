@@ -261,6 +261,9 @@ def get_backbone(args):
     args.features_dim = get_output_channels_dim(backbone)  # Dinamically obtain number of channels in output
     return backbone
 
+def get_output_channels_dim(model):
+    """Return the number of channels in the output of a model."""
+    return model(torch.ones([1, 3, 224, 224])).shape[1]
 
 class SSLGeoLocalizationNet():
     """The used networks are composed of a backbone and an aggregation layer.
