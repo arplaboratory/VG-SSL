@@ -213,7 +213,7 @@ def parse_arguments():
     parser.add_argument("--device", type=str,
                         default="cuda", choices=["cuda", "cpu"])
     parser.add_argument(
-        "--num_workers", type=int, default=24, help="num_workers for all dataloaders"
+        "--num_workers", type=int, default=8, help="num_workers for all dataloaders"
     )
     parser.add_argument(
         "--resize",
