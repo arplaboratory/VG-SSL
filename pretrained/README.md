@@ -13,3 +13,5 @@ barlow twins: bt-resnet50.pth (https://github.com/facebookresearch/barlowtwins)
 moco: moco-resnet50.pth (https://github.com/facebookresearch/moco)
 
 mocov2: mocov2-resnet50.pth (https://github.com/facebookresearch/moco)
+
+simsiam: simsiam-resnet50.pth (https://github.com/facebookresearch/simsiam)
