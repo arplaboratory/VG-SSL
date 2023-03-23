@@ -282,9 +282,14 @@ class SSLGeoLocalizationNet():
         if self.ssl_method == "byol":
             self.return_loss = True
             return BYOL(self.backbone,
-                        image_size = 480,
                         hidden_layer = -1,
                         aggregation = self.aggregation)
+        if self.ssl_method == "simsiam":
+            self.return_loss = True
+            return BYOL(self.backbone,
+                        hidden_layer = -1,
+                        aggregation = self.aggregation,
+                        use_momentum=False)
         else:
             raise NotImplementedError()
 
@@ -316,5 +321,7 @@ class SSLGeoLocalizationNet():
     def update(self):
         if self.ssl_method == "byol":
             self.model.module.update_moving_average()
+        elif self.ssl_method == "simsiam":
+            pass
         else:
             raise NotImplementedError()
