@@ -10,10 +10,17 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--ssl_method",
+        type=str,
+        default='simclr',
+        choices=["byol", "simclr", "simsiam"],
+        help="Choose to use triplet or pair"
+    )
+    parser.add_argument(
         "--method",
         type=str,
         default='triplet',
-        choices=['triplet', 'pair'],
+        choices=["triplet", "pair"],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
@@ -178,7 +185,7 @@ def parse_arguments():
         "--pretrain",
         type=str,
         default="imagenet",
-        choices=["imagenet", "gldv2", "places", "none", "simclr", "byol", "vicreg", "swav", "bt", "moco", "mocov2"],
+        choices=["imagenet", "gldv2", "places", "none", "simclr", "byol", "vicreg", "swav", "bt", "moco", "mocov2", "simsiam"],
         help="Select the pretrained weights for the starting network",
     )
     parser.add_argument(

@@ -1,5 +1,3 @@
-from model.functional import sare_ind, sare_joint
-from model.sync_batchnorm import convert_model
 from model import network
 import datasets_ws
 import commons
@@ -17,7 +15,6 @@ from os.path import join, isdir
 from datetime import datetime
 import torchvision.transforms as transforms
 from torch.utils.data.dataloader import DataLoader
-import wandb
 from uuid import uuid4
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
@@ -34,7 +31,6 @@ args.save_dir = join(
 commons.setup_logging(args.save_dir)
 commons.make_deterministic(args.seed)
 logging.info(f"Arguments: {args}")
-wandb.init(project="vg-ssl", entity="vg-ssl", config=vars(args))
 logging.info(f"The outputs are being saved in {args.save_dir}")
 logging.info(
     f"Using {torch.cuda.device_count()} GPUs and {multiprocessing.cpu_count()} CPUs"
@@ -45,9 +41,9 @@ logging.debug(
     f"Loading dataset {args.dataset_name} from folder {args.datasets_folder}")
 
 train_ds = None
-if args.method == 'triplet':
-    train_ds = datasets_ws.TripletsDataset(
-        args, args.datasets_folder, args.dataset_name, "train", args.negs_num_per_query
+if args.method == 'pair':
+    train_ds = datasets_ws.PairsDataset(
+        args, args.datasets_folder, args.dataset_name, "train"
     )
 else:
     raise NotImplementedError('Unknown method is used')
@@ -63,8 +59,9 @@ test_ds = datasets_ws.BaseDataset(
 logging.info(f"Test set: {test_ds}")
 
 # Initialize model
-model = network.GeoLocalizationNet(args)
-model = model.to(args.device)
+model = network.SSLGeoLocalizationNet(args)
+model.setup(args)
+
 if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
     if not args.resume:
         train_ds.is_inference = True
@@ -72,15 +69,14 @@ if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize
             args, train_ds, model.backbone)
     args.features_dim *= args.netvlad_clusters
 
-model = torch.nn.DataParallel(model)
 
 # Setup Optimizer and Loss
 if args.aggregation == "crn":
-    crn_params = list(model.module.aggregation.crn.parameters())
-    net_params = list(model.module.backbone.parameters()) + list(
+    crn_params = list(model.aggregation.crn.parameters())
+    net_params = list(model.backbone.parameters()) + list(
         [
             m[1]
-            for m in model.module.aggregation.named_parameters()
+            for m in model.aggregation.named_parameters()
             if not m[0].startswith("crn")
         ]
     )
@@ -111,22 +107,18 @@ if args.aggregation == "crn":
         )
 else:
     if args.optim == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        optimizer = torch.optim.Adam(list(model.backbone.parameters())+list(model.aggregation.parameters()), lr=args.lr)
     elif args.optim == "sgd":
         optimizer = torch.optim.SGD(
-            model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
+            list(model.backbone.parameters())+list(model.aggregation.parameters()), lr=args.lr, momentum=0.9, weight_decay=0.001
         )
 
-if args.method == "triplet":
-    if args.criterion == "triplet":
-        criterion_triplet = nn.TripletMarginLoss(
-            margin=args.margin, p=2, reduction="sum")
-    elif args.criterion == "sare_ind":
-        criterion_triplet = sare_ind
-    elif args.criterion == "sare_joint":
-        criterion_triplet = sare_joint
+if args.method == "pair":
+    # TODO: Add pair loss criterion here. If the model return loss, then skip
+    if model.return_loss == False:
+        raise NotImplementedError("Criterion not found for pairs!")
     else:
-        raise NotImplementedError("Criterion not found for triplets!")
+        criterion_pairs = None
 else:
     raise NotImplementedError()
 
@@ -139,11 +131,11 @@ if args.resume:
             best_r5,
             start_epoch_num,
             not_improved_num,
-        ) = util.resume_train(args, model, optimizer)
+        ) = util.resume_train_ssl(args, model, optimizer)
     else:
         # CRN uses pretrained NetVLAD, then requires loading with strict=False and
         # does not load the optimizer from the checkpoint file.
-        model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train(
+        model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train_ssl(
             args, model, strict=False
         )
     logging.info(
@@ -152,18 +144,12 @@ if args.resume:
 else:
     best_r5 = start_epoch_num = not_improved_num = 0
 
-if args.backbone.startswith("vit"):
-    logging.info(f"Output dimension of the model is {args.features_dim}")
-else:
-    logging.info(
-        f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
-    )
-
-
-if torch.cuda.device_count() >= 2:
-    # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
-    model = convert_model(model)
-    model = model.cuda()
+# if args.backbone.startswith("vit"):
+#     logging.info(f"Output dimension of the model is {args.features_dim}")
+# else:
+#     logging.info(
+#         f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
+#     )
 
 # Training loop
 for epoch_num in range(start_epoch_num, args.epochs_num):
@@ -177,12 +163,12 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
     for loop_num in range(loops_num):
         logging.debug(f"Cache: {loop_num} / {loops_num}")
 
-        if args.method == "triplet":
-            # Compute triplets to use in the triplet loss
+        if args.method == 'pair':
+            # Compute pairs to use in the pair loss
             train_ds.is_inference = True
-            train_ds.compute_triplets(args, model)
+            train_ds.compute_pairs(args, model)
             train_ds.is_inference = False
-            triplets_dl = DataLoader(
+            pairs_dl = DataLoader(
                 dataset=train_ds,
                 num_workers=args.num_workers,
                 batch_size=args.train_batch_size,
@@ -193,90 +179,53 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         else:
             raise NotImplementedError()
 
-        if args.use_faiss_gpu:
-            torch.cuda.empty_cache()
-
-        model = model.train()
+        model.backbone = model.backbone.train()
+        model.aggregation = model.aggregation.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
-        # triplets_local_indexes shape: (train_batch_size*10)*3 ; because 10 triplets per query
-        if args.method == "triplet":
-            for images, triplets_local_indexes, _ in tqdm(triplets_dl, ncols=100):
+        # pairs_local_indexes shape
+        if args.method == "pair":
+            for images, pairs_local_indexes, _ in tqdm(pairs_dl, ncols=100):
 
-                # Flip all triplets or none
+                # Flip all pairs or none
                 if args.horizontal_flip:
                     images = transforms.RandomHorizontalFlip()(images)
 
                 # Compute features of all images (images contains queries, positives and negatives)
-                features = model(images.to(args.device))
-                loss_triplet = 0
+                if criterion_pairs is None:
+                    loss = model.forward(images.to(args.device), pairs_local_indexes)
+                    loss_pairs = loss
+                else:
+                    raise NotImplementedError('Unknown loss is used')
+                    # features = model(images.to(args.device))
+                    # loss_pairs = 0
+                    # del features
 
-                if args.criterion == "triplet":
-                    triplets_local_indexes = torch.transpose(
-                        triplets_local_indexes.view(
-                            args.train_batch_size, args.negs_num_per_query, 3
-                        ),
-                        1,
-                        0,
-                    )
-                    for triplets in triplets_local_indexes:
-                        queries_indexes, positives_indexes, negatives_indexes = triplets.T
-                        loss_triplet += criterion_triplet(
-                            features[queries_indexes],
-                            features[positives_indexes],
-                            features[negatives_indexes],
-                        )
-                elif args.criterion == "sare_joint":
-                    # sare_joint needs to receive all the negatives at once
-                    triplet_index_batch = triplets_local_indexes.view(
-                        args.train_batch_size, 10, 3
-                    )
-                    for batch_triplet_index in triplet_index_batch:
-                        q = features[batch_triplet_index[0, 0]].unsqueeze(
-                            0
-                        )  # obtain query as tensor of shape 1xn_features
-                        p = features[batch_triplet_index[0, 1]].unsqueeze(
-                            0
-                        )  # obtain positive as tensor of shape 1xn_features
-                        n = features[
-                            batch_triplet_index[:, 2]
-                        ]  # obtain negatives as tensor of shape 10xn_features
-                        loss_triplet += criterion_triplet(q, p, n)
-                elif args.criterion == "sare_ind":
-                    for triplet in triplets_local_indexes:
-                        # triplet is a 1-D tensor with the 3 scalars indexes of the triplet
-                        q_i, p_i, n_i = triplet
-                        loss_triplet += criterion_triplet(
-                            features[q_i: q_i + 1],
-                            features[p_i: p_i + 1],
-                            features[n_i: n_i + 1],
-                        )
-
-                del features
-                loss_triplet /= args.train_batch_size * args.negs_num_per_query
+                loss_pairs /= args.train_batch_size
 
                 optimizer.zero_grad()
-                loss_triplet.backward()
+                loss_pairs.backward()
                 optimizer.step()
+                model.update()
 
                 # Keep track of all losses by appending them to epoch_losses
-                batch_loss = loss_triplet.item()
+                batch_loss = loss_pairs.item()
                 epoch_losses = np.append(epoch_losses, batch_loss)
-                del loss_triplet
+                del loss_pairs
 
         logging.debug(
             f"Epoch[{epoch_num:02d}]({loop_num}/{loops_num}): "
-            + f"current batch triplet loss = {batch_loss:.4f}, "
-            + f"average epoch triplet loss = {epoch_losses.mean():.4f}"
+            + f"current batch pair  loss = {batch_loss:.4f}, "
+            + f"average epoch pair loss = {epoch_losses.mean():.4f}"
         )
 
     logging.info(
         f"Finished epoch {epoch_num:02d} in {str(datetime.now() - epoch_start_time)[:-7]}, "
-        f"average epoch triplet loss = {epoch_losses.mean():.4f}"
+        f"average epoch pair loss = {epoch_losses.mean():.4f}"
     )
 
     # Compute recalls on validation set
-    recalls, recalls_str = test.test(args, val_ds, model)
+    recalls, recalls_str = test.test_ssl(args, val_ds, model)
     logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
 
     is_best = recalls[1] > best_r5
@@ -286,7 +235,8 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         args,
         {
             "epoch_num": epoch_num,
-            "model_state_dict": model.state_dict(),
+            "model_backbone_state_dict": model.backbone.state_dict(),
+            "model_aggregation_state_dict": model.aggregation.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "recalls": recalls,
             "best_r5": best_r5,
@@ -295,14 +245,6 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         is_best,
         filename="last_model.pth",
     )
-
-    wandb.log({
-        "epoch_num": epoch_num,
-        "recall1": recalls[0],
-        "recall5": recalls[1],
-        "best_r5": recalls[1] if is_best else best_r5,
-        "sum_loss": epoch_losses.mean(),
-    },)
 
     # If recall@5 did not improve for "many" epochs, stop training
     if is_best:
@@ -329,15 +271,11 @@ logging.info(
 )
 
 # Test best model on test set
-best_model_state_dict = torch.load(join(args.save_dir, "best_model.pth"))[
-    "model_state_dict"
-]
-model.load_state_dict(best_model_state_dict)
+best_model_state_dict = torch.load(join(args.save_dir, "best_model.pth"))
+best_model_backbone_state_dict, best_model_aggregation_state_dict = best_model_state_dict["model_backbone_state_dict"], best_model_state_dict["model_aggregation_state_dict"]
+model.backbone.load_state_dict(best_model_backbone_state_dict)
+model.aggregation.load_state_dict(best_model_aggregation_state_dict)
 
-recalls, recalls_str = test.test(
+recalls, recalls_str = test.test_ssl(
     args, test_ds, model, test_method=args.test_method)
 logging.info(f"Recalls on {test_ds}: {recalls_str}")
-wandb.log({
-    "final_recall1": recalls[0],
-    "final_recall5": recalls[1],
-},)

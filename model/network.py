@@ -13,6 +13,8 @@ from model.aggregation import Flatten
 from model.normalization import L2Norm
 import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
+from model.byol.byol_pytorch import BYOL
+from model.sync_batchnorm import convert_model
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
@@ -33,7 +35,8 @@ PRETRAINED_SSL_MODELS = {
     'swav': 'swav-resnet50',
     'bt': 'bt-resnet50',
     'moco': 'moco-resnet50',
-    'mocov2': 'mocov2-resnet50'
+    'mocov2': 'mocov2-resnet50',
+    'simsiam': 'simsiam-resnet50'
 }
 
 class GeoLocalizationNet(nn.Module):
@@ -143,6 +146,13 @@ def get_pretrained_model(args):
                 remove_prefix_key = key.replace('module.encoder_q.', '')
                 update_state_dict[remove_prefix_key] = value
             state_dict = update_state_dict
+        elif args.pretrain == 'simsiam':
+            state_dict = state_dict['state_dict']
+            update_state_dict = dict()
+            for key, value in state_dict.items():
+                remove_prefix_key = key.replace('module.encoder.', '')
+                update_state_dict[remove_prefix_key] = value
+            state_dict = update_state_dict
         else:
             raise NotImplementedError()
         model.load_state_dict(state_dict, strict=False)
@@ -169,7 +179,7 @@ def get_backbone(args):
     # The aggregation layer works differently based on the type of architecture
     args.work_with_tokens = args.backbone.startswith('cct') or args.backbone.startswith('vit')
     if args.backbone.startswith("resnet"):
-        if args.pretrain in ['places', 'gldv2', 'simclr', 'byol', 'vicreg', 'swav', 'bt', 'moco', 'mocov2']:
+        if args.pretrain in ['places', 'gldv2', 'simclr', 'byol', 'vicreg', 'swav', 'bt', 'moco', 'mocov2', 'simsiam']:
             backbone = get_pretrained_model(args)
         elif args.backbone.startswith("resnet18"):
             backbone = torchvision.models.resnet18(pretrained=True)
@@ -260,8 +270,66 @@ def get_backbone(args):
     args.features_dim = get_output_channels_dim(backbone)  # Dinamically obtain number of channels in output
     return backbone
 
-
 def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
+class SSLGeoLocalizationNet():
+    """The used networks are composed of a backbone and an aggregation layer.
+    """
+    def __init__(self, args):
+        super().__init__()
+        self.backbone = get_backbone(args)
+        self.aggregation = get_aggregation(args)
+        self.arch_name = args.backbone
+        self.return_loss = False
+        self.ssl_method = args.ssl_method
+        self.model = self.get_ssl_model()
+
+    def get_ssl_model(self):
+        if self.ssl_method == "byol":
+            self.return_loss = True
+            return BYOL(self.backbone,
+                        hidden_layer = -1,
+                        aggregation = self.aggregation)
+        if self.ssl_method == "simsiam":
+            self.return_loss = True
+            return BYOL(self.backbone,
+                        hidden_layer = -1,
+                        aggregation = self.aggregation,
+                        use_momentum=False)
+        else:
+            raise NotImplementedError()
+
+    def setup(self, args):
+        self.model = torch.nn.DataParallel(self.model)
+        self.model.to(args.device)
+        if torch.cuda.device_count() >= 2:
+            # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
+            self.model = convert_model(self.model)
+            self.model = self.model.to(args.device)
+
+    def forward(self, x, pairs_local_indexes=None, return_feature=False):
+        if return_feature:
+            if self.ssl_method == "byol":
+                feature = self.model(x, y=None, return_embedding=True, return_projection=False)
+            else:
+                raise NotImplementedError()
+            return feature
+        if pairs_local_indexes is None:
+            raise NotImplementedError("pairs indexes should be pass if not return_feature")
+        x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):2].long()
+        y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):2].long()
+        input_x = x[x_indexes]
+        input_y = x[y_indexes]
+        if self.return_loss:
+            loss = self.model(input_x, input_y).mean()
+            return loss
+        
+    def update(self):
+        if self.ssl_method == "byol":
+            self.model.module.update_moving_average()
+        elif self.ssl_method == "simsiam":
+            pass
+        else:
+            raise NotImplementedError()

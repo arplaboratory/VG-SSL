@@ -21,5 +21,8 @@ sbatch --export=ALL,PRETRAIN=swav,SEED=1 ./script/train_pitts30k_partial.sbatch
 sbatch --export=ALL,PRETRAIN=swav,SEED=2 ./script/train_pitts30k_partial.sbatch 
 sbatch --export=ALL,PRETRAIN=bt,SEED=0 ./script/train_pitts30k_partial.sbatch 
 sbatch --export=ALL,PRETRAIN=bt,SEED=1 ./script/train_pitts30k_partial.sbatch 
-sbatch --export=ALL,PRETRAIN=bt,SEED=2 ./script/train_pitts30k_partial.sbatch 
+sbatch --export=ALL,PRETRAIN=bt,SEED=2 ./script/train_pitts30k_partial.sbatch
+sbatch --export=ALL,PRETRAIN=simsiam,SEED=0 ./script/train_pitts30k_partial.sbatch 
+sbatch --export=ALL,PRETRAIN=simsiam,SEED=1 ./script/train_pitts30k_partial.sbatch 
+sbatch --export=ALL,PRETRAIN=simsiam,SEED=2 ./script/train_pitts30k_partial.sbatch 
 
