@@ -14,6 +14,7 @@ from model.normalization import L2Norm
 import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
 from model.byol.byol_pytorch import BYOL
+from model.sync_batchnorm import convert_model
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
@@ -278,28 +279,42 @@ class SSLGeoLocalizationNet():
         self.model = self.get_ssl_model()
 
     def get_ssl_model(self):
-        if args.ssl_method == "byol":
-            self.retrun_loss = True
+        if self.ssl_method == "byol":
+            self.return_loss = True
             return BYOL(self.backbone,
                         image_size = 480,
                         hidden_layer = -1,
-                        aggregation = aggregation)
+                        aggregation = self.aggregation)
         else:
             raise NotImplementedError()
 
     def setup(self, args):
+        self.model = torch.nn.DataParallel(self.model)
         self.model.to(args.device)
         if torch.cuda.device_count() >= 2:
             # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
             self.model = convert_model(self.model)
-            self.model = self.model.cuda()
+            self.model = self.model.to(args.device)
 
-    def forward(self, x, return_feature=False):
+    def forward(self, x, pairs_local_indexes=None, return_feature=False):
         if return_feature:
             if self.ssl_method == "byol":
-                feature = self.model(x, return_embedding=True)
+                feature = self.model(x, y=None, return_embedding=True, return_projection=False)
             else:
                 raise NotImplementedError()
             return feature
-        x = self.model(x)
-        return x
+        if pairs_local_indexes is None:
+            raise NotImplementedError("pairs indexes should be pass if not return_feature")
+        x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):2].long()
+        y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):2].long()
+        input_x = x[x_indexes]
+        input_y = x[y_indexes]
+        if self.return_loss:
+            loss = self.model(input_x, input_y).mean()
+            return loss
+        
+    def update(self):
+        if self.ssl_method == "byol":
+            self.model.module.update_moving_average()
+        else:
+            raise NotImplementedError()

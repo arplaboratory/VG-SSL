@@ -1,5 +1,3 @@
-from model.functional import sare_ind, sare_joint
-from model.sync_batchnorm import convert_model
 from model import network
 import datasets_ws
 import commons
@@ -74,11 +72,11 @@ if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize
 
 # Setup Optimizer and Loss
 if args.aggregation == "crn":
-    crn_params = list(model.module.aggregation.crn.parameters())
-    net_params = list(model.module.backbone.parameters()) + list(
+    crn_params = list(model.aggregation.crn.parameters())
+    net_params = list(model.backbone.parameters()) + list(
         [
             m[1]
-            for m in model.module.aggregation.named_parameters()
+            for m in model.aggregation.named_parameters()
             if not m[0].startswith("crn")
         ]
     )
@@ -109,15 +107,15 @@ if args.aggregation == "crn":
         )
 else:
     if args.optim == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        optimizer = torch.optim.Adam(list(model.backbone.parameters())+list(model.aggregation.parameters()), lr=args.lr)
     elif args.optim == "sgd":
         optimizer = torch.optim.SGD(
-            model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
+            list(model.backbone.parameters())+list(model.aggregation.parameters()), lr=args.lr, momentum=0.9, weight_decay=0.001
         )
 
 if args.method == "pair":
     # TODO: Add pair loss criterion here. If the model return loss, then skip
-    if model.module.return_loss == False:
+    if model.return_loss == False:
         raise NotImplementedError("Criterion not found for pairs!")
     else:
         criterion_pairs = None
@@ -133,11 +131,11 @@ if args.resume:
             best_r5,
             start_epoch_num,
             not_improved_num,
-        ) = util.resume_train(args, model, optimizer)
+        ) = util.resume_train_ssl(args, model, optimizer)
     else:
         # CRN uses pretrained NetVLAD, then requires loading with strict=False and
         # does not load the optimizer from the checkpoint file.
-        model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train(
+        model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train_ssl(
             args, model, strict=False
         )
     logging.info(
@@ -146,12 +144,12 @@ if args.resume:
 else:
     best_r5 = start_epoch_num = not_improved_num = 0
 
-if args.backbone.startswith("vit"):
-    logging.info(f"Output dimension of the model is {args.features_dim}")
-else:
-    logging.info(
-        f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
-    )
+# if args.backbone.startswith("vit"):
+#     logging.info(f"Output dimension of the model is {args.features_dim}")
+# else:
+#     logging.info(
+#         f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
+#     )
 
 # Training loop
 for epoch_num in range(start_epoch_num, args.epochs_num):
@@ -165,7 +163,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
     for loop_num in range(loops_num):
         logging.debug(f"Cache: {loop_num} / {loops_num}")
 
-        if args.method == 'pairs':
+        if args.method == 'pair':
             # Compute pairs to use in the pair loss
             train_ds.is_inference = True
             train_ds.compute_pairs(args, model)
@@ -181,12 +179,12 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         else:
             raise NotImplementedError()
 
-        torch.cuda.empty_cache()
-        model = model.train()
+        model.backbone = model.backbone.train()
+        model.aggregation = model.aggregation.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
         # pairs_local_indexes shape
-        if args.method == "pairs":
+        if args.method == "pair":
             for images, pairs_local_indexes, _ in tqdm(pairs_dl, ncols=100):
 
                 # Flip all pairs or none
@@ -195,18 +193,20 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
 
                 # Compute features of all images (images contains queries, positives and negatives)
                 if criterion_pairs is None:
-                    loss = model(images.to(args.device))
+                    loss = model.forward(images.to(args.device), pairs_local_indexes)
                     loss_pairs = loss
                 else:
-                    features = model(images.to(args.device))
-                    loss_pairs = 0
-                    del features
+                    raise NotImplementedError('Unknown loss is used')
+                    # features = model(images.to(args.device))
+                    # loss_pairs = 0
+                    # del features
 
                 loss_pairs /= args.train_batch_size
 
                 optimizer.zero_grad()
                 loss_pairs.backward()
                 optimizer.step()
+                model.update()
 
                 # Keep track of all losses by appending them to epoch_losses
                 batch_loss = loss_pairs.item()
@@ -225,7 +225,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
     )
 
     # Compute recalls on validation set
-    recalls, recalls_str = test.test(args, val_ds, model)
+    recalls, recalls_str = test.test_ssl(args, val_ds, model)
     logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
 
     is_best = recalls[1] > best_r5
@@ -235,7 +235,8 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         args,
         {
             "epoch_num": epoch_num,
-            "model_state_dict": model.state_dict(),
+            "model_backbone_state_dict": model.backbone.state_dict(),
+            "model_aggregation_state_dict": model.aggregation.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "recalls": recalls,
             "best_r5": best_r5,
@@ -270,11 +271,11 @@ logging.info(
 )
 
 # Test best model on test set
-best_model_state_dict = torch.load(join(args.save_dir, "best_model.pth"))[
-    "model_state_dict"
-]
-model.load_state_dict(best_model_state_dict)
+best_model_state_dict = torch.load(join(args.save_dir, "best_model.pth"))
+best_model_backbone_state_dict, best_model_aggregation_state_dict = best_model_state_dict["model_backbone_state_dict"], best_model_state_dict["model_aggregation_state_dict"]
+model.backbone.load_state_dict(best_model_backbone_state_dict)
+model.aggregation.load_state_dict(best_model_aggregation_state_dict)
 
-recalls, recalls_str = test.test(
+recalls, recalls_str = test.test_ssl(
     args, test_ds, model, test_method=args.test_method)
 logging.info(f"Recalls on {test_ds}: {recalls_str}")

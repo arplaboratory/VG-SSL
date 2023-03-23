@@ -66,6 +66,26 @@ def resume_train(args, model, optimizer=None, strict=False):
         )
     return model, optimizer, best_r5, start_epoch_num, not_improved_num
 
+def resume_train_ssl(args, model, optimizer=None, strict=False):
+    """Load model, optimizer, and other training parameters"""
+    logging.debug(f"Loading checkpoint: {args.resume}")
+    checkpoint = torch.load(args.resume)
+    start_epoch_num = checkpoint["epoch_num"]
+    model.backbone.load_state_dict(checkpoint["model_backbone_state_dict"], strict=strict)
+    model.aggregation.load_state_dict(checkpoint["model_aggregation_state_dict"], strict=strict)
+    if optimizer:
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    best_r5 = checkpoint["best_r5"]
+    not_improved_num = checkpoint["not_improved_num"]
+    logging.debug(
+        f"Loaded checkpoint: start_epoch_num = {start_epoch_num}, "
+        f"current_best_R@5 = {best_r5:.1f}"
+    )
+    if args.resume.endswith("last_model.pth"):  # Copy best model to current save_dir
+        shutil.copy(
+            args.resume.replace("last_model.pth", "best_model.pth"), args.save_dir
+        )
+    return model, optimizer, best_r5, start_epoch_num, not_improved_num
 
 def compute_pca(args, model, pca_dataset_folder, full_features_dim):
     model = model.eval()

@@ -101,9 +101,10 @@ def SimSiamMLP(dim, projection_size, hidden_size=4096):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, use_simsiam_mlp = False):
+    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, use_simsiam_mlp = False, aggregation = None):
         super().__init__()
         self.net = net
+        self.aggregation = aggregation
         self.layer = layer
 
         self.projector = None
@@ -143,7 +144,10 @@ class NetWrapper(nn.Module):
 
     def get_representation(self, x):
         if self.layer == -1:
-            return self.net(x)
+            if self.aggregation is not None:
+                return self.aggregation(self.net(x))
+            else:
+                return self.net(x)
 
         if not self.hook_registered:
             self._register_hook()
@@ -185,7 +189,7 @@ class BYOL(nn.Module):
         self.aggregation = aggregation
         # Augmentation is finished outside
 
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, use_simsiam_mlp=not use_momentum)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, use_simsiam_mlp=not use_momentum, aggregation=self.aggregation)
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
@@ -197,7 +201,7 @@ class BYOL(nn.Module):
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, 3, image_size, image_size, device=device))
+        self.forward(torch.randn(2, 3, image_size, image_size, device=device), torch.randn(2, 3, image_size, image_size, device=device))
 
     @singleton('target_encoder')
     def _get_target_encoder(self):
@@ -232,10 +236,6 @@ class BYOL(nn.Module):
         online_proj_one, _ = self.online_encoder(image_one)
         online_proj_two, _ = self.online_encoder(image_two)
 
-        if self.aggregation is not None:
-            online_proj_one = self.aggregation(online_proj_one)
-            online_proj_two = self.aggregation(online_proj_two)
-
         online_pred_one = self.online_predictor(online_proj_one)
         online_pred_two = self.online_predictor(online_proj_two)
 
@@ -243,9 +243,6 @@ class BYOL(nn.Module):
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
             target_proj_one, _ = target_encoder(image_one)
             target_proj_two, _ = target_encoder(image_two)
-            if self.aggregation is not None:
-                target_proj_one = self.aggregation(target_proj_one)
-                target_proj_two = self.aggregation(target_proj_two)
             target_proj_one.detach_()
             target_proj_two.detach_()
 
