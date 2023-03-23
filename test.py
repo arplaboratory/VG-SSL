@@ -258,12 +258,7 @@ def tes_ssl(args, eval_ds, model, test_method="hard_resize", pca=None):
     queries_features = all_features[eval_ds.database_num:]
     database_features = all_features[: eval_ds.database_num]
 
-    if args.use_faiss_gpu:
-        torch.cuda.empty_cache()
-        res = faiss.StandardGpuResources()
-        faiss_index = faiss.GpuIndexFlatL2(res, args.features_dim)
-    else:
-        faiss_index = faiss.IndexFlatL2(args.features_dim)
+    faiss_index = faiss.IndexFlatL2(args.features_dim)
     faiss_index.add(database_features)
     del database_features, all_features
 
