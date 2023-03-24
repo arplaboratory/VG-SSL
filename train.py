@@ -196,7 +196,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         if args.use_faiss_gpu:
             torch.cuda.empty_cache()
 
-        model = model.train()
+        model.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
         # triplets_local_indexes shape: (train_batch_size*10)*3 ; because 10 triplets per query

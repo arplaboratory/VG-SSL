@@ -458,7 +458,7 @@ class TripletsDataset(BaseDataset):
             shuffle=False,
             pin_memory=(args.device == "cuda"),
         )
-        model = model.eval()
+        model.eval()
 
         # RAMEfficient2DMatrix can be replaced by np.zeros, but using
         # RAMEfficient2DMatrix is RAM efficient for full database mining.

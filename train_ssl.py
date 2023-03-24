@@ -110,15 +110,30 @@ if args.aggregation == "crn":
         raise NotImplementedError()
 else:
     if args.optim == "adam":
-        optimizer = torch.optim.Adam(model.ssl_model.parameters(), lr=args.lr)
+        if args.cosine_scheduler:
+            optimizer = torch.optim.Adam(model.ssl_model.parameters(), lr=0)
+        else:
+            optimizer = torch.optim.Adam(model.ssl_model.parameters(), lr=args.lr)
     elif args.optim == "sgd":
-        optimizer = torch.optim.SGD(
-            model.ssl_model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
-        )
+        if args.cosine_scheduler:
+            optimizer = torch.optim.SGD(
+                model.ssl_model.parameters(), lr=0, momentum=0.9, weight_decay=1e-6
+            )
+        else:
+            optimizer = torch.optim.SGD(
+                model.ssl_model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-6
+            )
     elif args.optim == "lars":
-        optimizer = LARS(
-            model.ssl_model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-6
-        )
+        if args.cosine_scheduler:
+            optimizer = LARS(
+                model.ssl_model.parameters(), lr=0, weight_decay=1e-6, weight_decay_filter=exclude_bias_and_norm,
+                lars_adaptation_filter=exclude_bias_and_norm
+                )
+        else:
+            optimizer = LARS(
+                model.ssl_model.parameters(), lr=args.lr, weight_decay=1e-6, weight_decay_filter=exclude_bias_and_norm,
+                lars_adaptation_filter=exclude_bias_and_norm
+            )
 
 if args.method == "pair":
     # TODO: Add pair loss criterion here. If the model return loss, then skip
@@ -186,8 +201,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         else:
             raise NotImplementedError()
 
-        model.backbone = model.backbone.train()
-        model.aggregation = model.aggregation.train()
+        model.ssl_model.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
         # pairs_local_indexes shape
@@ -210,6 +224,8 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
 
                 loss_pairs /= args.train_batch_size
 
+                if args.cosine_scheduler:
+                    lr = adjust_learning_rate(args, optimizer, loader, step)
                 optimizer.zero_grad()
                 loss_pairs.backward()
                 optimizer.step()
@@ -224,6 +240,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
             f"Epoch[{epoch_num:02d}]({loop_num}/{loops_num}): "
             + f"current batch pair  loss = {batch_loss:.4f}, "
             + f"average epoch pair loss = {epoch_losses.mean():.4f}"
+            + f"lr = {lr:.4f}"
         )
 
     logging.info(
@@ -249,6 +266,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
             "recalls": recalls,
             "best_r5": best_r5,
             "not_improved_num": not_improved_num,
+            "current_lr": lr
         },
         is_best,
         filename="last_model.pth",

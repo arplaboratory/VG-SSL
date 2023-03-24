@@ -153,7 +153,7 @@ class NetVLAD(nn.Module):
         random_dl = DataLoader(dataset=cluster_ds, num_workers=args.num_workers,
                                 batch_size=args.infer_batch_size, sampler=random_sampler)
         with torch.no_grad():
-            backbone = backbone.eval()
+            backbone.eval()
             logging.debug("Extracting features to initialize NetVLAD layer")
             descriptors = np.zeros(shape=(descriptors_num, args.features_dim), dtype=np.float32)
             for iteration, (inputs, _) in enumerate(tqdm(random_dl, ncols=100)):

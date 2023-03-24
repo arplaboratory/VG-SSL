@@ -13,7 +13,7 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
     Obviously it is slower than test(), and can't be used with PCA.
     """
 
-    model = model.eval()
+    model.eval()
     if test_method == "nearest_crop" or test_method == "maj_voting":
         distances = np.empty(
             [eval_ds.queries_num * 5, eval_ds.database_num], dtype=np.float32
@@ -180,7 +180,7 @@ def tes_ssl(args, eval_ds, model, test_method="hard_resize", pca=None):
     if args.efficient_ram_testing:
         return test_efficient_ram_usage(args, eval_ds, model, test_method)
 
-    model = model.eval()
+    model.eval()
     with torch.no_grad():
         logging.debug("Extracting database features for evaluation/testing")
         # For database use "hard_resize", although it usually has no effect because database images have same resolution
@@ -364,7 +364,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     if args.efficient_ram_testing:
         return test_efficient_ram_usage(args, eval_ds, model, test_method)
 
-    model = model.eval()
+    model.eval()
     with torch.no_grad():
         logging.debug("Extracting database features for evaluation/testing")
         # For database use "hard_resize", although it usually has no effect because database images have same resolution
@@ -533,8 +533,8 @@ def test_ssl(args, eval_ds, model, test_method="hard_resize", pca=None):
     if args.efficient_ram_testing:
         return test_efficient_ram_usage(args, eval_ds, model, test_method)
 
-    model.backbone = model.backbone.eval()
-    model.aggregation = model.aggregation.eval()
+    model.backbone.eval()
+    model.aggregation.eval()
     with torch.no_grad():
         logging.debug("Extracting database features for evaluation/testing")
         # For database use "hard_resize", although it usually has no effect because database images have same resolution

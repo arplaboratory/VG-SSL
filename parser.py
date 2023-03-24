@@ -10,6 +10,11 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--cosine_scheduler",
+        action="store_true",
+        help="Choose if we use cosine scheduler"
+    )
+    parser.add_argument(
         "--ssl_method",
         type=str,
         default='simclr',
