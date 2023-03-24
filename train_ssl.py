@@ -15,6 +15,7 @@ from os.path import join, isdir
 from datetime import datetime
 import torchvision.transforms as transforms
 from torch.utils.data.dataloader import DataLoader
+from model.vicreg.utils import LARS, adjust_learning_rate
 from uuid import uuid4
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
@@ -105,12 +106,18 @@ if args.aggregation == "crn":
                 },
             ]
         )
+    elif args.optim == "lars":
+        raise NotImplementedError()
 else:
     if args.optim == "adam":
-        optimizer = torch.optim.Adam(list(model.backbone.parameters())+list(model.aggregation.parameters()), lr=args.lr)
+        optimizer = torch.optim.Adam(model.ssl_model.parameters(), lr=args.lr)
     elif args.optim == "sgd":
         optimizer = torch.optim.SGD(
-            list(model.backbone.parameters())+list(model.aggregation.parameters()), lr=args.lr, momentum=0.9, weight_decay=0.001
+            model.ssl_model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
+        )
+    elif args.optim == "lars":
+        optimizer = LARS(
+            model.ssl_model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-6
         )
 
 if args.method == "pair":
@@ -235,6 +242,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         args,
         {
             "epoch_num": epoch_num,
+            "model_ssl_state_dict": model.ssl_model.state_dict(),
             "model_backbone_state_dict": model.backbone.state_dict(),
             "model_aggregation_state_dict": model.aggregation.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
