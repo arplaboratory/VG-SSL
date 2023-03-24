@@ -11,4 +11,4 @@
 eval "$(conda shell.bash hook)"
 conda activate VPR_SSL
 
-python3 train.py --dataset_name=msls --mining=partial --datasets_folder=./datasets --seed $SEED --ssl_method $SSL --backbone resnet50conv4 --lr 3e-4
+python3 train.py --dataset_name=msls --datasets_folder=./datasets --seed $SEED --ssl_method $SSL --backbone resnet50conv4 --lr 0.2 --optim lars --cosine_scheduler

@@ -78,7 +78,7 @@ def parse_arguments():
         help="Learning rate to finetune pretrained network when using CRN",
     )
     parser.add_argument(
-        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd"]
+        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd", "lars"]
     )
     parser.add_argument(
         "--cache_refresh_rate",
