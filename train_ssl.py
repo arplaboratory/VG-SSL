@@ -15,7 +15,7 @@ from os.path import join, isdir
 from datetime import datetime
 import torchvision.transforms as transforms
 from torch.utils.data.dataloader import DataLoader
-from model.vicreg.utils import LARS, adjust_learning_rate
+from model.vicreg.utils import LARS, adjust_learning_rate, exclude_bias_and_norm
 from uuid import uuid4
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
@@ -70,6 +70,7 @@ if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize
             args, train_ds, model.backbone)
     args.features_dim *= args.netvlad_clusters
 
+torch.cuda.empty_cache()
 
 # Setup Optimizer and Loss
 if args.aggregation == "crn":
@@ -225,7 +226,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
                 loss_pairs /= args.train_batch_size
 
                 if args.cosine_scheduler:
-                    lr = adjust_learning_rate(args, optimizer, loader, step)
+                    lr = adjust_learning_rate(args, optimizer, loop_num, epoch_num)
                 optimizer.zero_grad()
                 loss_pairs.backward()
                 optimizer.step()
@@ -239,7 +240,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         logging.debug(
             f"Epoch[{epoch_num:02d}]({loop_num}/{loops_num}): "
             + f"current batch pair  loss = {batch_loss:.4f}, "
-            + f"average epoch pair loss = {epoch_losses.mean():.4f}"
+            + f"average epoch pair loss = {epoch_losses.mean():.4f}, "
             + f"lr = {lr:.4f}"
         )
 

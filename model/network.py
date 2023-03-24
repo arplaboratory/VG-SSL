@@ -15,6 +15,8 @@ import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
 from model.byol.byol_pytorch import BYOL
 from model.sync_batchnorm import convert_model
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
@@ -39,6 +41,16 @@ PRETRAINED_SSL_MODELS = {
     'simsiam': 'simsiam-resnet50'
 }
 
+def ddp_setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # initialize the process group
+    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+
+def ddp_cleanup():
+    dist.destroy_process_group()
+    
 class GeoLocalizationNet(nn.Module):
     """The used networks are composed of a backbone and an aggregation layer.
     """
@@ -281,38 +293,47 @@ class SSLGeoLocalizationNet():
         super().__init__()
         self.backbone = get_backbone(args)
         self.aggregation = get_aggregation(args)
+        self.image_size = args.resize
         self.arch_name = args.backbone
         self.return_loss = False
         self.ssl_method = args.ssl_method
-        self.model = self.get_ssl_model()
+        self.ssl_model = self.get_ssl_model()
 
     def get_ssl_model(self):
         if self.ssl_method == "byol":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
+                        image_size=self.image_size,
                         aggregation = self.aggregation)
         if self.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
+                        image_size = self.image_size,
                         aggregation = self.aggregation,
                         use_momentum=False)
         else:
             raise NotImplementedError()
 
     def setup(self, args):
-        self.model = torch.nn.DataParallel(self.model)
-        self.model.to(args.device)
+        # DP
+        self.ssl_model = torch.nn.DataParallel(self.ssl_model)
+        self.ssl_model = self.ssl_model.to(args.device)
+        # # DDP
+        # world_size = torch.cuda.device_count()
+        # ranks = np.arange(world_size)
+        # for rank in ranks:
+
         if torch.cuda.device_count() >= 2:
             # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
-            self.model = convert_model(self.model)
-            self.model = self.model.to(args.device)
+            self.ssl_model = convert_model(self.ssl_model)
+            self.ssl_model = self.ssl_model.to(args.device)
 
     def forward(self, x, pairs_local_indexes=None, return_feature=False):
         if return_feature:
             if self.ssl_method == "byol":
-                feature = self.model(x, y=None, return_embedding=True, return_projection=False)
+                feature = self.ssl_model(x, y=None, return_embedding=True, return_projection=False)
             else:
                 raise NotImplementedError()
             return feature
@@ -323,12 +344,14 @@ class SSLGeoLocalizationNet():
         input_x = x[x_indexes]
         input_y = x[y_indexes]
         if self.return_loss:
-            loss = self.model(input_x, input_y).mean()
+            loss = self.ssl_model(input_x, input_y).mean()
             return loss
+        else:
+            raise NotImplementedError()
         
     def update(self):
         if self.ssl_method == "byol":
-            self.model.module.update_moving_average()
+            self.ssl_model.module.update_moving_average()
         elif self.ssl_method == "simsiam":
             pass
         else:

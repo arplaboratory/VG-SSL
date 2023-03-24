@@ -1,14 +1,17 @@
 # https://raw.githubusercontent.com/facebookresearch/vicreg/main/main_vicreg.py
 from torch import nn, optim
+import torch
+import math
 
 def exclude_bias_and_norm(p):
     return p.ndim == 1
 
-def adjust_learning_rate(args, optimizer, loader, step):
+def adjust_learning_rate(args, optimizer, loop_num, epoch_num):
     loops_num = math.ceil(args.queries_per_epoch / args.cache_refresh_rate)
+    step = loop_num + epoch_num * loops_num
     max_steps = args.epochs_num * loops_num
     warmup_steps = 10 * loops_num
-    base_lr = args.lr * args.batch_size / 256
+    base_lr = args.lr * args.train_batch_size / 256
     if step < warmup_steps:
         lr = base_lr * step / warmup_steps
     else:

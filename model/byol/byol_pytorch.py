@@ -135,7 +135,6 @@ class NetWrapper(nn.Module):
         handle = layer.register_forward_hook(self._hook)
         self.hook_registered = True
 
-    @singleton('projector')
     def _get_projector(self, hidden):
         _, dim = hidden.shape
         create_mlp_fn = MLP if not self.use_simsiam_mlp else SimSiamMLP
@@ -166,8 +165,10 @@ class NetWrapper(nn.Module):
         if not return_projection:
             return representation
 
-        projector = self._get_projector(representation)
-        projection = projector(representation)
+        if self.projector is None:
+            self.projector = self._get_projector(representation)
+
+        projection = self.projector(representation)
         return projection, representation
 
 # main class
@@ -201,9 +202,8 @@ class BYOL(nn.Module):
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, 3, image_size, image_size, device=device), torch.randn(2, 3, image_size, image_size, device=device))
+        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=device), torch.randn(2, 3, image_size[0], image_size[1], device=device))
 
-    @singleton('target_encoder')
     def _get_target_encoder(self):
         target_encoder = copy.deepcopy(self.online_encoder)
         set_requires_grad(target_encoder, False)
@@ -240,7 +240,9 @@ class BYOL(nn.Module):
         online_pred_two = self.online_predictor(online_proj_two)
 
         with torch.no_grad():
-            target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
+            if self.target_encoder is None:
+                self.target_encoder = self._get_target_encoder()
+            target_encoder =  self.target_encoder if self.use_momentum else self.online_encoder
             target_proj_one, _ = target_encoder(image_one)
             target_proj_two, _ = target_encoder(image_two)
             target_proj_one.detach_()
