@@ -146,7 +146,6 @@ class NetVLAD(nn.Module):
         return vlad
 
     def initialize_netvlad_layer(self, args, cluster_ds, backbone):
-        self = self.to(args.device)
         descriptors_num = 50000
         descs_num_per_image = 100
         images_num = math.ceil(descriptors_num / descs_num_per_image)
