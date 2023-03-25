@@ -61,9 +61,9 @@ def parse_arguments():
         "--margin", type=float, default=0.1, help="margin for the triplet loss"
     )
     parser.add_argument(
-        "--epochs_num", type=int, default=40, help="number of epochs to train for"
+        "--epochs_num", type=int, default=100, help="number of epochs to train for"
     )
-    parser.add_argument("--patience", type=int, default=40)
+    parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.00001, help="_")
     parser.add_argument(
         "--lr_crn_layer",
