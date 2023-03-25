@@ -146,12 +146,13 @@ class NetVLAD(nn.Module):
         return vlad
 
     def initialize_netvlad_layer(self, args, cluster_ds, backbone):
+        self = self.to(args.device)
         descriptors_num = 50000
         descs_num_per_image = 100
         images_num = math.ceil(descriptors_num / descs_num_per_image)
         random_sampler = SubsetRandomSampler(np.random.choice(len(cluster_ds), images_num, replace=False))
         random_dl = DataLoader(dataset=cluster_ds, num_workers=args.num_workers,
-                                batch_size=args.infer_batch_size, sampler=random_sampler)
+                                batch_size=32, sampler=random_sampler)
         with torch.no_grad():
             backbone.eval()
             logging.debug("Extracting features to initialize NetVLAD layer")
@@ -171,7 +172,6 @@ class NetVLAD(nn.Module):
         kmeans.train(descriptors)
         logging.debug(f"NetVLAD centroids shape: {kmeans.centroids.shape}")
         self.init_params(kmeans.centroids, descriptors)
-        self = self.to(args.device)
 
 
 class CRNModule(nn.Module):

@@ -518,13 +518,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def setup(self, stage):
         if stage == "fit":
             if self.args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
-                # self.backbone.cuda()
                 if not self.args.resume:
                     self.train_ds.is_inference = True
-                    # self.aggregation.initialize_netvlad_layer(
-                    #     self.args, self.train_ds, self.backbone)
+                    self.aggregation.initialize_netvlad_layer(
+                        self.args, self.train_ds, self.backbone)
                 self.args.features_dim *= self.args.netvlad_clusters
-                # self.backbone.cpu()
 
     def optimizer_step(
             self,
