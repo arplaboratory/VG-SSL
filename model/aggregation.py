@@ -150,8 +150,9 @@ class NetVLAD(nn.Module):
         descs_num_per_image = 100
         images_num = math.ceil(descriptors_num / descs_num_per_image)
         random_sampler = SubsetRandomSampler(np.random.choice(len(cluster_ds), images_num, replace=False))
+        infer_batch_size = 32
         random_dl = DataLoader(dataset=cluster_ds, num_workers=args.num_workers,
-                                batch_size=32, sampler=random_sampler)
+                                batch_size=infer_batch_size, sampler=random_sampler)
         with torch.no_grad():
             backbone.eval()
             logging.debug("Extracting features to initialize NetVLAD layer")
@@ -162,7 +163,7 @@ class NetVLAD(nn.Module):
                 norm_outputs = F.normalize(outputs, p=2, dim=1)
                 image_descriptors = norm_outputs.view(norm_outputs.shape[0], args.features_dim, -1).permute(0, 2, 1)
                 image_descriptors = image_descriptors.cpu().numpy()
-                batchix = iteration * args.infer_batch_size * descs_num_per_image
+                batchix = iteration * infer_batch_size * descs_num_per_image
                 for ix in range(image_descriptors.shape[0]):
                     sample = np.random.choice(image_descriptors.shape[1], descs_num_per_image, replace=False)
                     startix = batchix + ix * descs_num_per_image
