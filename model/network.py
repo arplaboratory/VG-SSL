@@ -345,6 +345,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.train_ds, self.val_ds, self.test_ds = ds_list
         self.all_features = None
         self.best_r5 = None
+        self.lr = 0
 
     def get_ssl_model(self):
         if self.args.ssl_method == "byol":
@@ -401,7 +402,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 num_workers=self.args.num_workers,
                 batch_size=self.args.train_batch_size,
                 collate_fn=datasets_ws.collate_fn,
-                pin_memory=(self.args.device == "cuda"),
                 drop_last=True,
             )
             return pairs_dl
@@ -413,7 +413,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             dataset=self.val_ds,
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
-            pin_memory=(self.args.device == "cuda"),
         )
         return val_dataloader
 
@@ -422,12 +421,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             dataset=self.test_ds,
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
-            pin_memory=(self.args.device == "cuda"),
         )
         return test_dataloader
 
     def training_step(self, inputs, _):
-        if args.method == "pair":
+        if self.args.method == "pair":
             images, pairs_local_indexes, _ = inputs
             # Flip all pairs or none
             if self.args.horizontal_flip:
@@ -435,7 +433,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
             # Compute features of all images (images contains queries, positives and negatives)
             if self.criterion_pairs is None:
-                loss = self.forward(images.to(args.device), pairs_local_indexes)
+                loss = self.forward(images, pairs_local_indexes)
                 loss_pairs = loss
             else:
                 raise NotImplementedError('Unknown loss is used')
@@ -443,7 +441,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 # loss_pairs = 0
                 # del features
 
-            loss_pairs /= args.train_batch_size
+            # loss_pairs /= self.args.train_batch_size
+            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True)
             return {'loss': loss_pairs}
         else:
             raise NotImplementedError()
@@ -464,7 +463,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         faiss_index.add(database_features)
         del database_features, self.all_features
 
-        logging.debug("Calculating recalls")
+        # logging.debug("Calculating recalls")
         distances, predictions = faiss_index.search(
             queries_features, max(args.recall_values)
         )
@@ -494,8 +493,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         recalls, recalls_str = self._shared_on_eval_epoch_end(self.val_ds, self.args)
         if self.best_r5 is None or self.best_r5 < recalls[1]:
             self.best_r5 = recalls[1]
-        log_dict = {"val_recall1":recalls[0], "val_recall5":recalls[1], "best_r5":self.best_r5}
-        self.log_dict(log_dict)
+        self.log("val_recall1", recalls[0], sync_dist=True)
+        self.log("val_recall5", recalls[1], sync_dist=True)
+        self.log("val_best_r5", self.best_r5, sync_dist=True)
 
     def test_step(self, inputs, _):
         self._shared_eval_step(self.test_ds, inputs)
@@ -503,15 +503,16 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def on_test_epoch_end(self):
         recalls, recalls_str = self._shared_on_eval_epoch_end(self.test_ds, self.args)
         log_dict = {"test_recall1":recalls[0], "test_recall5":recalls[1]}
-        self.log_dict(log_dict)
+        self.log("test_recall1", recalls[0], sync_dist=True)
+        self.log("test_recall5", recalls[1], sync_dist=True)
 
     def configure_optimizers(self):
         optimizer, self.criterion_pairs = setup_optimizer_loss(self.args, self.ssl_model.parameters(), return_loss=True)
         return optimizer
 
     def on_before_zero_grad(self, _):
-        if self.cosine_scheduler:
-            lr = adjust_learning_rate(args, optimizer, global_step)
+        if self.args.cosine_scheduler:
+            self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step)
         self.update()
 
     def setup(self, stage):
@@ -524,3 +525,13 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         self.args, self.train_ds, self.backbone)
                 self.args.features_dim *= self.args.netvlad_clusters
                 self.backbone.cpu()
+
+    def optimizer_step(
+            self,
+            epoch,
+            batch_idx,
+            optimizer,
+            optimizer_closure,
+        ):
+        optimizer_closure()
+        optimizer.step()

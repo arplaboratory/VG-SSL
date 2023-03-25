@@ -18,25 +18,11 @@ from torch.utils.data.dataloader import DataLoader
 from model.vicreg.utils import LARS, adjust_learning_rate, exclude_bias_and_norm
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ProgressBar, ModelCheckpoint
+from pytorch_lightning.callbacks import RichProgressBar, ModelCheckpoint, LearningRateMonitor
 from uuid import uuid4
 import os
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
-
-class LitProgressBar(ProgressBar):
-    def __init__(self):
-        super().__init__()  # don't forget this :)
-        self.enable = True
-
-    def disable(self):
-        self.enable = False
-
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch_idx):
-        super().on_train_batch_end(trainer, pl_module, outputs, batch_idx)  # don't forget this :)
-        percent = (self.train_batch_idx / self.total_train_batches) * 100
-        sys.stdout.flush()
-        sys.stdout.write(f'{percent:.01f} percent complete \r')
 
 if __name__ == "__main__":
     # Initial setup: parser, logging...
@@ -84,13 +70,14 @@ if __name__ == "__main__":
     checkpoint_callback = ModelCheckpoint(
         monitor="val_recall5",
         dirpath=args.save_dir,
-        filename="best_model.pth",
+        filename="best_model",
         save_last=True,
         mode="max",
         verbose=True)
     checkpoint_callback.CHECKPOINT_NAME_LAST = "last_model"
     checkpoint_callback.FILE_EXTENSION = ".pth"
-    bar = LitProgressBar()
+    bar = RichProgressBar()
+    lrmoniter = LearningRateMonitor(logging_interval = "step")
 
     trainer = pl.Trainer(
         accelerator="gpu",
@@ -99,7 +86,7 @@ if __name__ == "__main__":
         sync_batchnorm = True,
         reload_dataloaders_every_n_epochs = 1,
         logger = wandb_logger,
-        callbacks = [checkpoint_callback, bar]
+        callbacks = [checkpoint_callback, bar, lrmoniter]
     )
     if trainer.global_rank == 0:
         wandb_logger.experiment.config.update(vars(args))
