@@ -223,7 +223,7 @@ def parse_arguments():
     parser.add_argument(
         "--resize",
         type=int,
-        default=[192, 256],
+        default=[480, 640],
         nargs=2,
         help="Resizing shape for images (HxW).",
     )

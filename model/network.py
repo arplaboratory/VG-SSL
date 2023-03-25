@@ -442,7 +442,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 # del features
 
             # loss_pairs /= self.args.train_batch_size
-            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size)
             return {'loss': loss_pairs}
         else:
             raise NotImplementedError()
@@ -451,7 +451,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if self.all_features is None:
             self.all_features = np.empty((len(eval_ds), self.args.features_dim), dtype="float32")
         images, indices = inputs
-        features = self.forward(images.to(self.args.device), return_feature=True)
+        features = self.forward(images, return_feature=True)
         features = features.cpu().numpy()
         self.all_features[indices.cpu().numpy(), :] = features
 
