@@ -116,6 +116,8 @@ else:
         optimizer = torch.optim.SGD(
             model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
         )
+    else:
+        raise NotImplementedError()
 
 if args.method == "triplet":
     if args.criterion == "triplet":
