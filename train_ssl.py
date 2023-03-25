@@ -81,7 +81,8 @@ if __name__ == "__main__":
 
     trainer = pl.Trainer(
         accelerator="gpu",
-        devices = torch.cuda.device_count(),
+        num_nodes=os.environ["SLURM_JOB_NUM_NODES"],
+        devices = os.environ["SLURM_NTASKS_PER_NODE"],
         max_epochs = args.epochs_num,
         sync_batchnorm = True,
         reload_dataloaders_every_n_epochs = 1,
