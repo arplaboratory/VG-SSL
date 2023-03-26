@@ -443,6 +443,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
             # loss_pairs /= self.args.train_batch_size
             self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size)
+            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size)
             return {'loss': loss_pairs}
         else:
             raise NotImplementedError()

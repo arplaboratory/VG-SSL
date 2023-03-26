@@ -87,7 +87,8 @@ if __name__ == "__main__":
         sync_batchnorm = True,
         reload_dataloaders_every_n_epochs = 1,
         logger = wandb_logger,
-        callbacks = [checkpoint_callback, bar, lrmoniter]
+        callbacks = [checkpoint_callback, bar, lrmoniter],
+        check_val_every_n_epoch = 5
     )
     if trainer.global_rank == 0:
         wandb_logger.experiment.config.update(vars(args))
