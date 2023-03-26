@@ -6,12 +6,13 @@ import math
 def exclude_bias_and_norm(p):
     return p.ndim == 1
 
-def adjust_learning_rate(args, optimizer, global_step):
-    queries_per_step = args.train_batch_size * os.environ["SLURM_JOB_NUM_NODES"] * os.environ["SLURM_NTASKS_PER_NODE"]
+def adjust_learning_rate(args, optimizer, global_step, num_nodes=1, num_devices=1):
+    queries_per_step = args.train_batch_size * num_nodes * num_devices
     step = global_step * queries_per_step
     max_steps = args.epochs_num * args.queries_per_epoch
     warmup_steps = 10 * args.queries_per_epoch
-    base_lr = args.lr * args.train_batch_size / 256
+    effective_batch_size = args.train_batch_size * num_nodes * num_devices
+    base_lr = args.lr * effective_batch_size / 256
     if step < warmup_steps:
         lr = base_lr * step / warmup_steps
     else:
