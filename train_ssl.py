@@ -65,6 +65,8 @@ if __name__ == "__main__":
     logging.info(f"Test set: {test_ds}")
 
     # Initialize model
+    args.num_nodes = os.environ["SLURM_JOB_NUM_NODES"]
+    args.num_devices = os.environ["SLURM_NTASKS_PER_NODE"]
     model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds])
 
     checkpoint_callback = ModelCheckpoint(
@@ -80,9 +82,9 @@ if __name__ == "__main__":
     lrmoniter = LearningRateMonitor(logging_interval = "step")
 
     trainer = pl.Trainer(
-        accelerator="gpu",
-        num_nodes=os.environ["SLURM_JOB_NUM_NODES"],
-        devices = os.environ["SLURM_NTASKS_PER_NODE"],
+        accelerator = "gpu",
+        num_nodes = args.num_nodes,
+        devices = args.num_nodes,
         max_epochs = args.epochs_num,
         sync_batchnorm = True,
         reload_dataloaders_every_n_epochs = 1,

@@ -513,7 +513,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
     def on_before_zero_grad(self, _):
         if self.args.cosine_scheduler:
-            self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step)
+            self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step, self.args.num_nodes, self.args.num_devices)
         self.update()
 
     def setup(self, stage):
