@@ -84,7 +84,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         accelerator = "gpu",
         num_nodes = args.num_nodes,
-        devices = args.num_nodes,
+        devices = args.num_devices,
         max_epochs = args.epochs_num,
         sync_batchnorm = True,
         reload_dataloaders_every_n_epochs = 1,
