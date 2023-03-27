@@ -45,16 +45,6 @@ PRETRAINED_SSL_MODELS = {
     'simsiam': 'simsiam-resnet50'
 }
 
-def ddp_setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-
-    # initialize the process group
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
-
-def ddp_cleanup():
-    dist.destroy_process_group()
-    
 class GeoLocalizationNet(nn.Module):
     """The used networks are composed of a backbone and an aggregation layer.
     """
@@ -401,8 +391,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 dataset=self.train_ds,
                 num_workers=self.args.num_workers,
                 batch_size=self.args.train_batch_size,
-                collate_fn=datasets_ws.collate_fn,
-                drop_last=True,
+                collate_fn=datasets_ws.collate_fn
             )
             return pairs_dl
         else:
@@ -442,19 +431,25 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 # del features
 
             # loss_pairs /= self.args.train_batch_size
-            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size)
-            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size)
+            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, rank_zero_only=True)
+            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, rank_zero_only=True)
             return {'loss': loss_pairs}
         else:
             raise NotImplementedError()
     
+    def _shared_on_eval_epoch_start(self, eval_ds, args):
+        if self.trainer.is_global_zero:
+            self.all_features = torch.empty((len(eval_ds), self.args.features_dim), dtype=torch.float32, device="cpu")
+
     def _shared_eval_step(self, eval_ds, inputs):
-        if self.all_features is None:
-            self.all_features = np.empty((len(eval_ds), self.args.features_dim), dtype="float32")
         images, indices = inputs
         features = self.forward(images, return_feature=True)
-        features = features.cpu().numpy()
-        self.all_features[indices.cpu().numpy(), :] = features
+        features = self.all_gather(features)
+        indices = self.all_gather(indices)
+        if self.trainer.is_global_zero:
+            features = features.view(-1, features.size(-1))
+            indices = indices.view(-1)
+            self.all_features[indices.cpu(), :] = features.cpu()
 
     def _shared_on_eval_epoch_end(self, eval_ds, args):
         queries_features = self.all_features[eval_ds.database_num:]
@@ -463,8 +458,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         faiss_index = faiss.IndexFlatL2(args.features_dim)
         faiss_index.add(database_features)
         del database_features, self.all_features
+        self.all_features = None
 
-        # logging.debug("Calculating recalls")
+        logging.debug("Calculating recalls")
         distances, predictions = faiss_index.search(
             queries_features, max(args.recall_values)
         )
@@ -484,28 +480,35 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 rec in zip(args.recall_values, recalls)]
         )
 
-        self.all_features = None
         return recalls, recalls_str
+
+    def on_validation_epoch_start(self):
+        self._shared_on_eval_epoch_start(self.val_ds, self.args)
 
     def validation_step(self, inputs, _):
         self._shared_eval_step(self.val_ds, inputs)
 
     def on_validation_epoch_end(self):
-        recalls, recalls_str = self._shared_on_eval_epoch_end(self.val_ds, self.args)
-        if self.best_r5 is None or self.best_r5 < recalls[1]:
-            self.best_r5 = recalls[1]
-        self.log("val_recall1", recalls[0], sync_dist=True)
-        self.log("val_recall5", recalls[1], sync_dist=True)
-        self.log("val_best_r5", self.best_r5, sync_dist=True)
+        if self.trainer.is_global_zero:
+            recalls, recalls_str = self._shared_on_eval_epoch_end(self.val_ds, self.args)
+            if self.best_r5 is None or self.best_r5 < recalls[1]:
+                self.best_r5 = recalls[1]
+            self.log("val_recall1", recalls[0])
+            self.log("val_recall5", recalls[1])
+            self.log("val_best_r5", self.best_r5)
+
+    def on_test_epoch_start(self):
+        self._shared_on_eval_epoch_start(self.test_ds, self.args)
 
     def test_step(self, inputs, _):
         self._shared_eval_step(self.test_ds, inputs)
 
     def on_test_epoch_end(self):
-        recalls, recalls_str = self._shared_on_eval_epoch_end(self.test_ds, self.args)
-        log_dict = {"test_recall1":recalls[0], "test_recall5":recalls[1]}
-        self.log("test_recall1", recalls[0], sync_dist=True)
-        self.log("test_recall5", recalls[1], sync_dist=True)
+        if self.trainer.is_global_zero:
+            recalls, recalls_str = self._shared_on_eval_epoch_end(self.test_ds, self.args)
+            log_dict = {"test_recall1":recalls[0], "test_recall5":recalls[1]}
+            self.log("test_recall1", recalls[0])
+            self.log("test_recall5", recalls[1])
 
     def configure_optimizers(self):
         optimizer, self.criterion_pairs = setup_optimizer_loss(self.args, self.ssl_model.parameters(), return_loss=True)
@@ -517,7 +520,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.update()
 
     def setup(self, stage):
-        if stage == "fit":
+        if stage == "validate":
             if self.args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
                 self.ssl_model.to(self.args.device)
                 if not self.args.resume:
