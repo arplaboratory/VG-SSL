@@ -458,7 +458,7 @@ class TripletsDataset(BaseDataset):
             shuffle=False,
             pin_memory=(args.device == "cuda"),
         )
-        model = model.eval()
+        model.eval()
 
         # RAMEfficient2DMatrix can be replaced by np.zeros, but using
         # RAMEfficient2DMatrix is RAM efficient for full database mining.
@@ -910,12 +910,10 @@ class PairsDataset(BaseDataset):
     
     def compute_pairs(self, args, model):
         self.is_inference = True
-        if self.mining == "full":
-            raise NotImplementedError('Full mining for SSL is not implemented')
-        elif self.mining == "partial" or self.mining == "msls_weighted":
-            raise NotImplementedError('Partial mining for SSL is not implemented')
-        elif self.mining == "random":
+        if self.mining == "random":
             self.compute_pairs_random(args, model)
+        else:
+            raise NotImplementedError()
 
     def get_best_positive_index(self, args, query_index, cache, query_features):
         best_positive_index = random.choice(self.hard_positives_per_query[query_index]).item()
@@ -925,7 +923,7 @@ class PairsDataset(BaseDataset):
         self.pairs_global_indexes = []
         # Take 1000 random queries
         sampled_queries_indexes = np.random.choice(
-            self.queries_num, args.cache_refresh_rate, replace=False
+            self.queries_num, args.queries_per_epoch, replace=False
         )
         # Take all the positives
         positives_indexes = [

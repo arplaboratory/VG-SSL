@@ -10,6 +10,11 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--cosine_scheduler",
+        action="store_true",
+        help="Choose if we use cosine scheduler"
+    )
+    parser.add_argument(
         "--ssl_method",
         type=str,
         default='simclr',
@@ -56,9 +61,9 @@ def parse_arguments():
         "--margin", type=float, default=0.1, help="margin for the triplet loss"
     )
     parser.add_argument(
-        "--epochs_num", type=int, default=40, help="number of epochs to train for"
+        "--epochs_num", type=int, default=100, help="number of epochs to train for"
     )
-    parser.add_argument("--patience", type=int, default=40)
+    parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.00001, help="_")
     parser.add_argument(
         "--lr_crn_layer",
@@ -73,7 +78,7 @@ def parse_arguments():
         help="Learning rate to finetune pretrained network when using CRN",
     )
     parser.add_argument(
-        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd"]
+        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd", "lars"]
     )
     parser.add_argument(
         "--cache_refresh_rate",

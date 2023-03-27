@@ -15,6 +15,12 @@ import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
 from model.byol.byol_pytorch import BYOL
 from model.sync_batchnorm import convert_model
+from model.vicreg.utils import adjust_learning_rate, LARS, exclude_bias_and_norm
+import datasets_ws
+import pytorch_lightning as pl
+from torch.utils.data.dataloader import DataLoader
+import numpy as np
+import faiss
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
@@ -274,45 +280,84 @@ def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
-class SSLGeoLocalizationNet():
+def setup_optimizer_loss(args, model_parameters, return_loss=True):
+    # Setup Optimizer
+    if args.aggregation == "crn":
+        raise NotImplementedError()
+    else:
+        if args.optim == "adam":
+            if args.cosine_scheduler:
+                optimizer = torch.optim.Adam(model_parameters, lr=0)
+            else:
+                optimizer = torch.optim.Adam(model_parameters, lr=args.lr)
+        elif args.optim == "sgd":
+            if args.cosine_scheduler:
+                optimizer = torch.optim.SGD(
+                    model_parameters, lr=0, momentum=0.9, weight_decay=1e-6
+                )
+            else:
+                optimizer = torch.optim.SGD(
+                    model_parameters, lr=args.lr, momentum=0.9, weight_decay=1e-6
+                )
+        elif args.optim == "lars":
+            if args.cosine_scheduler:
+                optimizer = LARS(
+                    model_parameters, lr=0, weight_decay=1e-6, weight_decay_filter=exclude_bias_and_norm,
+                    lars_adaptation_filter=exclude_bias_and_norm
+                    )
+            else:
+                optimizer = LARS(
+                    model_parameters, lr=args.lr, weight_decay=1e-6, weight_decay_filter=exclude_bias_and_norm,
+                    lars_adaptation_filter=exclude_bias_and_norm
+                )
+    # Setup Loss
+    if args.method == "pair":
+        # TODO: Add pair loss criterion here. If the model return loss, then skip
+        if return_loss == False:
+            raise NotImplementedError("Criterion not found for pairs!")
+        else:
+            criterion_pairs = None
+    else:
+        raise NotImplementedError()
+    return optimizer, criterion_pairs
+
+class SSLGeoLocalizationNet(pl.LightningModule):
     """The used networks are composed of a backbone and an aggregation layer.
     """
-    def __init__(self, args):
+    def __init__(self, args, ds_list):
         super().__init__()
+        self.args = args
         self.backbone = get_backbone(args)
         self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone
         self.return_loss = False
-        self.ssl_method = args.ssl_method
-        self.model = self.get_ssl_model()
+        self.ssl_model = self.get_ssl_model()
+        self.train_ds, self.val_ds, self.test_ds = ds_list
+        self.all_features = None
+        self.best_r5 = None
+        self.lr = 0
 
     def get_ssl_model(self):
-        if self.ssl_method == "byol":
+        if self.args.ssl_method == "byol":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
+                        image_size=self.args.resize,
                         aggregation = self.aggregation)
-        if self.ssl_method == "simsiam":
+        if self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
+                        image_size = self.args.resize,
                         aggregation = self.aggregation,
                         use_momentum=False)
         else:
             raise NotImplementedError()
 
-    def setup(self, args):
-        self.model = torch.nn.DataParallel(self.model)
-        self.model.to(args.device)
-        if torch.cuda.device_count() >= 2:
-            # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
-            self.model = convert_model(self.model)
-            self.model = self.model.to(args.device)
-
     def forward(self, x, pairs_local_indexes=None, return_feature=False):
         if return_feature:
-            if self.ssl_method == "byol":
-                feature = self.model(x, y=None, return_embedding=True, return_projection=False)
+            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam":
+                feature = self.ssl_model(x, y=None, return_embedding=True, return_projection=False)
             else:
                 raise NotImplementedError()
             return feature
@@ -323,13 +368,173 @@ class SSLGeoLocalizationNet():
         input_x = x[x_indexes]
         input_y = x[y_indexes]
         if self.return_loss:
-            loss = self.model(input_x, input_y).mean()
+            loss = self.ssl_model(input_x, input_y).mean()
             return loss
+        else:
+            raise NotImplementedError()
         
     def update(self):
-        if self.ssl_method == "byol":
-            self.model.module.update_moving_average()
-        elif self.ssl_method == "simsiam":
+        if self.args.ssl_method == "byol":
+            self.ssl_model.update_moving_average()
+        elif self.args.ssl_method == "simsiam":
             pass
         else:
             raise NotImplementedError()
+    
+    def train_dataloader(self):
+        if self.args.method == 'pair':
+            # Compute pairs to use in the pair loss
+            self.train_ds.is_inference = True
+            self.train_ds.compute_pairs(self.args, None)
+            self.train_ds.is_inference = False
+            pairs_dl = DataLoader(
+                dataset=self.train_ds,
+                num_workers=self.args.num_workers,
+                batch_size=self.args.train_batch_size,
+                collate_fn=datasets_ws.collate_fn
+            )
+            return pairs_dl
+        else:
+            raise NotImplementedError()
+
+    def val_dataloader(self):
+        val_dataloader = DataLoader(
+            dataset=self.val_ds,
+            num_workers=self.args.num_workers,
+            batch_size=self.args.infer_batch_size,
+        )
+        return val_dataloader
+
+    def test_dataloader(self):
+        test_dataloader = DataLoader(
+            dataset=self.test_ds,
+            num_workers=self.args.num_workers,
+            batch_size=self.args.infer_batch_size,
+        )
+        return test_dataloader
+
+    def training_step(self, inputs, _):
+        if self.args.method == "pair":
+            images, pairs_local_indexes, _ = inputs
+            # Flip all pairs or none
+            if self.args.horizontal_flip:
+                images = transforms.RandomHorizontalFlip()(images)
+
+            # Compute features of all images (images contains queries, positives and negatives)
+            if self.criterion_pairs is None:
+                loss = self.forward(images, pairs_local_indexes)
+                loss_pairs = loss
+            else:
+                raise NotImplementedError('Unknown loss is used')
+                # features = model(images.to(args.device))
+                # loss_pairs = 0
+                # del features
+
+            # loss_pairs /= self.args.train_batch_size
+            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, rank_zero_only=True)
+            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, rank_zero_only=True)
+            return {'loss': loss_pairs}
+        else:
+            raise NotImplementedError()
+    
+    def _shared_on_eval_epoch_start(self, eval_ds, args):
+        if self.trainer.is_global_zero:
+            self.all_features = torch.empty((len(eval_ds), self.args.features_dim), dtype=torch.float32, device="cpu")
+
+    def _shared_eval_step(self, eval_ds, inputs):
+        images, indices = inputs
+        features = self.forward(images, return_feature=True)
+        features = self.all_gather(features)
+        indices = self.all_gather(indices)
+        if self.trainer.is_global_zero:
+            features = features.view(-1, features.size(-1))
+            indices = indices.view(-1)
+            self.all_features[indices.cpu(), :] = features.cpu()
+
+    def _shared_on_eval_epoch_end(self, eval_ds, args):
+        queries_features = self.all_features[eval_ds.database_num:]
+        database_features = self.all_features[: eval_ds.database_num]
+
+        faiss_index = faiss.IndexFlatL2(args.features_dim)
+        faiss_index.add(database_features)
+        del database_features, self.all_features
+        self.all_features = None
+
+        logging.debug("Calculating recalls")
+        distances, predictions = faiss_index.search(
+            queries_features, max(args.recall_values)
+        )
+        # For each query, check if the predictions are correct
+        positives_per_query = eval_ds.get_positives()
+        # args.recall_values by default is [1, 5, 10, 20]
+        recalls = np.zeros(len(args.recall_values))
+        for query_index, pred in enumerate(predictions):
+            for i, n in enumerate(args.recall_values):
+                if np.any(np.in1d(pred[:n], positives_per_query[query_index])):
+                    recalls[i:] += 1
+                    break
+        # Divide by the number of queries*100, so the recalls are in percentages
+        recalls = recalls / eval_ds.queries_num * 100
+        recalls_str = ", ".join(
+            [f"R@{val}: {rec:.1f}" for val,
+                rec in zip(args.recall_values, recalls)]
+        )
+
+        return recalls, recalls_str
+
+    def on_validation_epoch_start(self):
+        self._shared_on_eval_epoch_start(self.val_ds, self.args)
+
+    def validation_step(self, inputs, _):
+        self._shared_eval_step(self.val_ds, inputs)
+
+    def on_validation_epoch_end(self):
+        if self.trainer.is_global_zero:
+            recalls, recalls_str = self._shared_on_eval_epoch_end(self.val_ds, self.args)
+            if self.best_r5 is None or self.best_r5 < recalls[1]:
+                self.best_r5 = recalls[1]
+            self.log("val_recall1", recalls[0])
+            self.log("val_recall5", recalls[1])
+            self.log("val_best_r5", self.best_r5)
+
+    def on_test_epoch_start(self):
+        self._shared_on_eval_epoch_start(self.test_ds, self.args)
+
+    def test_step(self, inputs, _):
+        self._shared_eval_step(self.test_ds, inputs)
+
+    def on_test_epoch_end(self):
+        if self.trainer.is_global_zero:
+            recalls, recalls_str = self._shared_on_eval_epoch_end(self.test_ds, self.args)
+            log_dict = {"test_recall1":recalls[0], "test_recall5":recalls[1]}
+            self.log("test_recall1", recalls[0])
+            self.log("test_recall5", recalls[1])
+
+    def configure_optimizers(self):
+        optimizer, self.criterion_pairs = setup_optimizer_loss(self.args, self.ssl_model.parameters(), return_loss=True)
+        return optimizer
+
+    def on_before_zero_grad(self, _):
+        if self.args.cosine_scheduler:
+            self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step, self.args.num_nodes, self.args.num_devices)
+        self.update()
+
+    def setup(self, stage):
+        if stage == "validate":
+            if self.args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
+                self.ssl_model.to(self.args.device)
+                if not self.args.resume:
+                    self.train_ds.is_inference = True
+                    self.aggregation.initialize_netvlad_layer(
+                        self.args, self.train_ds, self.backbone)
+                self.args.features_dim *= self.args.netvlad_clusters
+
+    def optimizer_step(
+            self,
+            epoch,
+            batch_idx,
+            optimizer,
+            optimizer_closure,
+        ):
+        optimizer_closure()
+        optimizer.step()
