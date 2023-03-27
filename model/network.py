@@ -10,15 +10,13 @@ from google_drive_downloader import GoogleDriveDownloader as gdd
 from transformers import ViTMAEConfig, ViTMAEModel
 import torch.nn.functional as F
 
-import torch.distributed as dist
-
-
 from model.cct import cct_14_7x2_384
 from model.aggregation import Flatten
 from model.normalization import L2Norm
 import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
 from model.byol.byol_pytorch import BYOL
+from model.vicreg.vicreg_pytorch import VICREG
 from model.sync_batchnorm import convert_model
 from model.vicreg.utils import adjust_learning_rate, LARS, exclude_bias_and_norm
 import datasets_ws
@@ -26,12 +24,6 @@ import pytorch_lightning as pl
 from torch.utils.data.dataloader import DataLoader
 import numpy as np
 import faiss
-
-sim_coeff = 25.0
-std_coeff = 25.0
-cov_coeff = 1.0
-
-num_features = 2048
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
@@ -56,93 +48,6 @@ PRETRAINED_SSL_MODELS = {
     'simsiam': 'simsiam-resnet50'
 }
 
-class VicregVGNet(nn.Module):
-    
-    def __init__(self, args):
-        super().__init__()
-        self.backbone = get_backbone(args)
-        self.arch_name = args.backbone
-        self.aggregation = get_aggregation(args)
-   
-        self.projector = Projector(args, 65536)
-        self.batch_size = args.train_batch_size
-
-    
-
-        if args.fc_output_dim != None:
-        # Concatenate fully connected layer to the aggregation layer
-            self.aggregation = nn.Sequential(self.aggregation,
-                                                nn.Linear(args.features_dim, args.fc_output_dim),
-                                                L2Norm())
-            args.features_dim = args.fc_output_dim
-        
-
-    def forward(self, x, y):
-
-        x = self.backbone(x)
- 
-        y = self.backbone(y)
-        
-        x = self.aggregation(x)
-        y = self.aggregation(y)
-     
-
-        x = self.projector(x)
-        y = self.projector(y)
-        
-        repr_loss = F.mse_loss(x, y)
-
-        # x = torch.cat(FullGatherLayer.apply(x), dim=0)
-        # y = torch.cat(FullGatherLayer.apply(y), dim=0)
-        x = x - x.mean(dim=0)
-        y = y - y.mean(dim=0)
-
-        std_x = torch.sqrt(x.var(dim=0) + 0.0001)
-        std_y = torch.sqrt(y.var(dim=0) + 0.0001)
-        std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
-
-        cov_x = (x.T @ x) / (self.batch_size - 1)
-        cov_y = (y.T @ y) / (self.batch_size - 1)
-        cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
-            num_features
-        ) + off_diagonal(cov_y).pow_(2).sum().div(num_features)
-
-        loss = (
-            sim_coeff * repr_loss
-            + std_coeff * std_loss
-            + cov_coeff * cov_loss
-        )
-        return loss
-
-def exclude_bias_and_norm(p):
-    return p.ndim == 1
-
-
-def off_diagonal(x):
-    n, m = x.shape
-    assert n == m
-    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
-
-
-
-class FullGatherLayer(torch.autograd.Function):
-    """
-    Gather tensors from all process and support backward propagation
-    for the gradients across processes.
-    """
-
-    @staticmethod
-    def forward(ctx, x):
-        output = [torch.zeros_like(x) for _ in range(dist.get_world_size())]
-        dist.all_gather(output, x)
-        return tuple(output)
-
-    @staticmethod
-    def backward(ctx, *grads):
-        all_gradients = torch.stack(grads)
-        dist.all_reduce(all_gradients)
-        return all_gradients[dist.get_rank()]
-
 
 class GeoLocalizationNet(nn.Module):
     """The used networks are composed of a backbone and an aggregation layer.
@@ -153,10 +58,6 @@ class GeoLocalizationNet(nn.Module):
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
         self.self_att = False
-
-        #self.projector = Projector(args, 16384)
-        
-
 
         if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
             if args.l2 == "before_pool":
@@ -178,32 +79,16 @@ class GeoLocalizationNet(nn.Module):
             self.non_local = nn.Sequential(*non_local_list)
             self.self_att = True
 
-    def forward(self, x):
-
-        
+    def forward(self, x):   
         x = self.backbone(x)
         if self.self_att:
             x = self.non_local(x)
-        if self.arch_name.startswith("vit") :
+        if self.arch_name.startswith("vit"):
             x = x.last_hidden_state[:, 0, :]
             return x
         x = self.aggregation(x)
-        #x = self.projector(x)
-        
         return x
 
-
-def Projector(args, embedding):
-    mlp = "2048-2048"
-    mlp_spec = f"{embedding}-{mlp}"
-    layers = []
-    f = list(map(int, mlp_spec.split("-")))
-    for i in range(len(f) - 2):
-        layers.append(nn.Linear(f[i], f[i + 1]))
-        layers.append(nn.BatchNorm1d(f[i + 1]))
-        layers.append(nn.ReLU(True))
-    layers.append(nn.Linear(f[-2], f[-1], bias=False))
-    return nn.Sequential(*layers)
 
 def get_aggregation(args):
     if args.aggregation == "gem":
@@ -482,19 +367,32 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         hidden_layer = -1,
                         image_size=self.args.resize,
                         aggregation = self.aggregation)
-        if self.args.ssl_method == "simsiam":
+        elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
                         aggregation = self.aggregation,
                         use_momentum=False)
+        elif self.args.ssl_method == "vicreg":
+            self.return_loss = True
+            return VICREG(self.backbone,
+                        image_size = self.args.resize,
+                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        aggregation = self.aggregation)
+        elif self.args.ssl_method == "bt":
+            self.return_loss = True
+            return VICREG(self.backbone,
+                        image_size = self.args.resize,
+                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        aggregation = self.aggregation,
+                        use_bt_loss = True)
         else:
             raise NotImplementedError()
 
     def forward(self, x, pairs_local_indexes=None, return_feature=False):
         if return_feature:
-            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam":
+            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt":
                 feature = self.ssl_model(x, y=None, return_embedding=True, return_projection=False)
             else:
                 raise NotImplementedError()
@@ -514,7 +412,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def update(self):
         if self.args.ssl_method == "byol":
             self.ssl_model.update_moving_average()
-        elif self.args.ssl_method == "simsiam":
+        elif self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt":
             pass
         else:
             raise NotImplementedError()
@@ -665,6 +563,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                     self.train_ds.is_inference = True
                     self.aggregation.initialize_netvlad_layer(
                         self.args, self.train_ds, self.backbone)
+                    self.train_ds.is_inference = False
                 self.args.features_dim *= self.args.netvlad_clusters
 
     def optimizer_step(

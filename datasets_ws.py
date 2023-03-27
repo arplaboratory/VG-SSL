@@ -16,7 +16,6 @@ from torch.utils.data.dataloader import DataLoader
 import h5py
 import random
 from PIL import ImageOps, ImageFilter
-import augmentations as aug
 from torchvision.transforms import InterpolationMode
 
 
@@ -41,57 +40,6 @@ class Solarization(object):
             return ImageOps.solarize(img)
         else:
             return img
-
-
-
-vic_trans1 = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(
-                    224, interpolation=InterpolationMode.BICUBIC
-                ),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomApply(
-                    [
-                        transforms.ColorJitter(
-                            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
-                        )
-                    ],
-                    p=0.8,
-                ),
-                transforms.RandomGrayscale(p=0.2),
-                GaussianBlur(p=1.0),
-                Solarization(p=0.0),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
-        )
-
-vic_trans2 = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(
-                    224, interpolation=InterpolationMode.BICUBIC
-                ),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomApply(
-                    [
-                        transforms.ColorJitter(
-                            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
-                        )
-                    ],
-                    p=0.8,
-                ),
-                transforms.RandomGrayscale(p=0.2),
-                GaussianBlur(p=0.1),
-                Solarization(p=0.2),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
-        )
-
 
 
 base_transform = transforms.Compose(
@@ -148,191 +96,11 @@ class PCADataset(data.Dataset):
         )
 
     def __getitem__(self, index):
-
         return base_transform(path_to_pil_img(self.images_paths[index]))
 
     def __len__(self):
         return len(self.images_paths)
 
-
-class VicregDataset(data.Dataset):
-    """Dataset with images from database and queries, used for inference (testing and building cache)."""
-
-    def __init__(
-        self, args, datasets_folder="datasets", dataset_name="pitts30k", split="train"
-    ):
-        super().__init__()
-        self.args = args
-        self.dataset_name = dataset_name
-        # self.dataset_folder = join(datasets_folder, dataset_name, "images", split)
-        # if not os.path.exists(self.dataset_folder): raise FileNotFoundError(f"Folder {self.dataset_folder} does not exist")
-
-        self.resize = args.resize
-        self.test_method = args.test_method
-
-        # Redirect datafolder path to h5
-        self.database_folder_h5_path = join(
-            datasets_folder, dataset_name, split + "_database.h5"
-        )
-        self.queries_folder_h5_path = join(
-            datasets_folder, dataset_name, split + "_queries.h5"
-        )
-        database_folder_h5_df = h5py.File(self.database_folder_h5_path, "r")
-        queries_folder_h5_df = h5py.File(self.queries_folder_h5_path, "r")
-
-        # Map name to index
-        self.database_name_dict = {}
-        self.queries_name_dict = {}
-        for index, database_image_name in enumerate(database_folder_h5_df["image_name"]):
-            self.database_name_dict[database_image_name.decode(
-                "UTF-8")] = index
-        for index, queries_image_name in enumerate(queries_folder_h5_df["image_name"]):
-            self.queries_name_dict[queries_image_name.decode("UTF-8")] = index
-
-        # Read paths and UTM coordinates for all images.
-        # database_folder = join(self.dataset_folder, "database")
-        # queries_folder  = join(self.dataset_folder, "queries")
-        # if not os.path.exists(database_folder): raise FileNotFoundError(f"Folder {database_folder} does not exist")
-        # if not os.path.exists(queries_folder) : raise FileNotFoundError(f"Folder {queries_folder} does not exist")
-        self.database_paths = sorted(self.database_name_dict)
-        self.queries_paths = sorted(self.queries_name_dict)
-        # The format must be path/to/file/@utm_easting@utm_northing@...@.jpg
-        self.database_utms = np.array(
-            [(path.split("@")[1], path.split("@")[2])
-             for path in self.database_paths]
-        ).astype(np.float)
-        self.queries_utms = np.array(
-            [(path.split("@")[1], path.split("@")[2])
-             for path in self.queries_paths]
-        ).astype(np.float)
-
-        # Find soft_positives_per_query, which are within val_positive_dist_threshold (deafult 25 meters)
-        knn = NearestNeighbors(n_jobs=-1)
-        knn.fit(self.database_utms)
-        self.soft_positives_per_query = knn.radius_neighbors(
-            self.queries_utms,
-            radius=args.val_positive_dist_threshold,
-            return_distance=False,
-        )
-
-        # Add database, queries prefix
-        for i in range(len(self.database_paths)):
-            self.database_paths[i] = "database_" + self.database_paths[i]
-        for i in range(len(self.queries_paths)):
-            self.queries_paths[i] = "queries_" + self.queries_paths[i]
-
-        self.images_paths = list(self.database_paths) + \
-            list(self.queries_paths)
-
-        self.database_num = len(self.database_paths)
-        self.queries_num = len(self.queries_paths)
-
-        # Close h5 and initialize for h5 reading in __getitem__
-        self.database_folder_h5_df = None
-        self.queries_folder_h5_df = None
-        database_folder_h5_df.close()
-        queries_folder_h5_df.close()
-
-    def __getitem__(self, index):
-        # Init
-        if self.database_folder_h5_df is None:
-            self.database_folder_h5_df = h5py.File(
-                self.database_folder_h5_path, "r")
-            self.queries_folder_h5_df = h5py.File(
-                self.queries_folder_h5_path, "r")
-        img = self._find_img_in_h5(index)
-
-        x = vic_trans1(img)
-        y = vic_trans2(img)
-        # With database images self.test_method should always be "hard_resize"
-        # if self.test_method == "hard_resize":
-        #     # self.test_method=="hard_resize" is the default, resizes all images to the same size.
-        #     img = transforms.functional.resize(img, self.resize)
-        # else:
-        #     img = self._test_query_transform(img)
-        return x, y, index
-
-    def _test_query_transform(self, img):
-        """Transform query image according to self.test_method."""
-        C, H, W = img.shape
-        if self.test_method == "single_query":
-            # self.test_method=="single_query" is used when queries have varying sizes, and can't be stacked in a batch.
-            processed_img = transforms.functional.resize(img, min(self.resize))
-        elif self.test_method == "central_crop":
-            # Take the biggest central crop of size self.resize. Preserves ratio.
-            scale = max(self.resize[0] / H, self.resize[1] / W)
-            processed_img = torch.nn.functional.interpolate(
-                img.unsqueeze(0), scale_factor=scale
-            ).squeeze(0)
-            processed_img = transforms.functional.center_crop(
-                processed_img, self.resize
-            )
-            assert processed_img.shape[1:] == torch.Size(
-                self.resize
-            ), f"{processed_img.shape[1:]} {self.resize}"
-        elif (
-            self.test_method == "five_crops"
-            or self.test_method == "nearest_crop"
-            or self.test_method == "maj_voting"
-        ):
-            # Get 5 square crops with size==shorter_side (usually 480). Preserves ratio and allows batches.
-            shorter_side = min(self.resize)
-            processed_img = transforms.functional.resize(img, shorter_side)
-            processed_img = torch.stack(
-                transforms.functional.five_crop(processed_img, shorter_side)
-            )
-            assert processed_img.shape == torch.Size(
-                [5, 3, shorter_side, shorter_side]
-            ), f"{processed_img.shape} {torch.Size([5, 3, shorter_side, shorter_side])}"
-        return processed_img
-
-    def _find_img_in_h5(self, index, database_queries_split=None):
-        # Find inside index for h5
-        if database_queries_split is None:
-            image_name = "_".join(self.images_paths[index].split("_")[1:])
-            database_queries_split = self.images_paths[index].split("_")[0]
-        else:
-            if database_queries_split == "database":
-                image_name = "_".join(
-                    self.database_paths[index].split("_")[1:])
-            elif database_queries_split == "queries":
-                image_name = "_".join(self.queries_paths[index].split("_")[1:])
-            else:
-                raise KeyError("Dont find correct database_queries_split!")
-
-        if database_queries_split == "database":
-            img = Image.fromarray(
-                self.database_folder_h5_df["image_data"][
-                    self.database_name_dict[image_name]
-                ]
-            )
-        elif database_queries_split == "queries":
-            img = Image.fromarray(
-                self.queries_folder_h5_df["image_data"][
-                    self.queries_name_dict[image_name]
-                ]
-            )
-        else:
-            raise KeyError("Dont find correct database_queries_split!")
-
-        return img
-
-    def __len__(self):
-        return len(self.images_paths)
-
-    def __repr__(self):
-        return f"< {self.__class__.__name__}, {self.dataset_name} - #database: {self.database_num}; #queries: {self.queries_num} >"
-
-    def get_positives(self):
-        return self.soft_positives_per_query
-
-    def __del__(self):
-        if (
-            hasattr(self, "database_folder_h5_df")
-            and self.database_folder_h5_df is not None
-        ):
-            self.database_folder_h5_df.close()
-            self.queries_folder_h5_df.close()
 
 class BaseDataset(data.Dataset):
     """Dataset with images from database and queries, used for inference (testing and building cache)."""
@@ -422,11 +190,11 @@ class BaseDataset(data.Dataset):
         img = self._find_img_in_h5(index)
         img = base_transform(img)
         # With database images self.test_method should always be "hard_resize"
-        # if self.test_method == "hard_resize":
-        #     # self.test_method=="hard_resize" is the default, resizes all images to the same size.
-        #     img = transforms.functional.resize(img, self.resize)
-        # else:
-        #     img = self._test_query_transform(img)
+        if self.test_method == "hard_resize":
+            # self.test_method=="hard_resize" is the default, resizes all images to the same size.
+            img = transforms.functional.resize(img, self.resize)
+        else:
+            img = self._test_query_transform(img)
         return img, index
 
     def _test_query_transform(self, img):
