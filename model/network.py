@@ -7,6 +7,11 @@ from torch import nn
 from os.path import join
 from transformers import ViTModel
 from google_drive_downloader import GoogleDriveDownloader as gdd
+from transformers import ViTMAEConfig, ViTMAEModel
+import torch.nn.functional as F
+
+import torch.distributed as dist
+
 
 from model.cct import cct_14_7x2_384
 from model.aggregation import Flatten
@@ -21,6 +26,12 @@ import pytorch_lightning as pl
 from torch.utils.data.dataloader import DataLoader
 import numpy as np
 import faiss
+
+sim_coeff = 25.0
+std_coeff = 25.0
+cov_coeff = 1.0
+
+num_features = 2048
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
@@ -45,6 +56,94 @@ PRETRAINED_SSL_MODELS = {
     'simsiam': 'simsiam-resnet50'
 }
 
+class VicregVGNet(nn.Module):
+    
+    def __init__(self, args):
+        super().__init__()
+        self.backbone = get_backbone(args)
+        self.arch_name = args.backbone
+        self.aggregation = get_aggregation(args)
+   
+        self.projector = Projector(args, 65536)
+        self.batch_size = args.train_batch_size
+
+    
+
+        if args.fc_output_dim != None:
+        # Concatenate fully connected layer to the aggregation layer
+            self.aggregation = nn.Sequential(self.aggregation,
+                                                nn.Linear(args.features_dim, args.fc_output_dim),
+                                                L2Norm())
+            args.features_dim = args.fc_output_dim
+        
+
+    def forward(self, x, y):
+
+        x = self.backbone(x)
+ 
+        y = self.backbone(y)
+        
+        x = self.aggregation(x)
+        y = self.aggregation(y)
+     
+
+        x = self.projector(x)
+        y = self.projector(y)
+        
+        repr_loss = F.mse_loss(x, y)
+
+        # x = torch.cat(FullGatherLayer.apply(x), dim=0)
+        # y = torch.cat(FullGatherLayer.apply(y), dim=0)
+        x = x - x.mean(dim=0)
+        y = y - y.mean(dim=0)
+
+        std_x = torch.sqrt(x.var(dim=0) + 0.0001)
+        std_y = torch.sqrt(y.var(dim=0) + 0.0001)
+        std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
+
+        cov_x = (x.T @ x) / (self.batch_size - 1)
+        cov_y = (y.T @ y) / (self.batch_size - 1)
+        cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
+            num_features
+        ) + off_diagonal(cov_y).pow_(2).sum().div(num_features)
+
+        loss = (
+            sim_coeff * repr_loss
+            + std_coeff * std_loss
+            + cov_coeff * cov_loss
+        )
+        return loss
+
+def exclude_bias_and_norm(p):
+    return p.ndim == 1
+
+
+def off_diagonal(x):
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+
+
+class FullGatherLayer(torch.autograd.Function):
+    """
+    Gather tensors from all process and support backward propagation
+    for the gradients across processes.
+    """
+
+    @staticmethod
+    def forward(ctx, x):
+        output = [torch.zeros_like(x) for _ in range(dist.get_world_size())]
+        dist.all_gather(output, x)
+        return tuple(output)
+
+    @staticmethod
+    def backward(ctx, *grads):
+        all_gradients = torch.stack(grads)
+        dist.all_reduce(all_gradients)
+        return all_gradients[dist.get_rank()]
+
+
 class GeoLocalizationNet(nn.Module):
     """The used networks are composed of a backbone and an aggregation layer.
     """
@@ -54,6 +153,10 @@ class GeoLocalizationNet(nn.Module):
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
         self.self_att = False
+
+        #self.projector = Projector(args, 16384)
+        
+
 
         if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
             if args.l2 == "before_pool":
@@ -76,15 +179,31 @@ class GeoLocalizationNet(nn.Module):
             self.self_att = True
 
     def forward(self, x):
+
+        
         x = self.backbone(x)
         if self.self_att:
             x = self.non_local(x)
-        if self.arch_name.startswith("vit"):
+        if self.arch_name.startswith("vit") :
             x = x.last_hidden_state[:, 0, :]
             return x
         x = self.aggregation(x)
+        #x = self.projector(x)
+        
         return x
 
+
+def Projector(args, embedding):
+    mlp = "2048-2048"
+    mlp_spec = f"{embedding}-{mlp}"
+    layers = []
+    f = list(map(int, mlp_spec.split("-")))
+    for i in range(len(f) - 2):
+        layers.append(nn.Linear(f[i], f[i + 1]))
+        layers.append(nn.BatchNorm1d(f[i + 1]))
+        layers.append(nn.ReLU(True))
+    layers.append(nn.Linear(f[-2], f[-1], bias=False))
+    return nn.Sequential(*layers)
 
 def get_aggregation(args):
     if args.aggregation == "gem":
@@ -249,7 +368,7 @@ def get_backbone(args):
                         params.requires_grad = True
         args.features_dim = 384
         return backbone
-    elif args.backbone.startswith("vit"):
+    elif args.backbone == ("vit"):
         if args.resize[0] == 224:
             backbone = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
         elif args.resize[0] == 384:
@@ -270,7 +389,26 @@ def get_backbone(args):
                         params.requires_grad = True
         args.features_dim = 768
         return backbone
+    elif args.backbone == ("vitmae"):
+        if args.resize[0] == 224:
+            backbone = ViTMAEModel.from_pretrained("facebook/vit-mae-base")
+        else:
+            raise ValueError('Image size for ViT must be either 224 or 384')
+        if args.trunc_te:
+            logging.debug(f"Truncate ViT at transformers encoder {args.trunc_te}")
+            backbone.encoder.layer = backbone.encoder.layer[:args.trunc_te]
+        if args.freeze_te:
+            logging.debug(f"Freeze all the layers up to tranformer encoder {args.freeze_te+1}")
+            for p in backbone.parameters():
+                p.requires_grad = False
+            for name, child in backbone.encoder.layer.named_children():
+                if int(name) > args.freeze_te:
+                    for params in child.parameters():
+                        params.requires_grad = True
+        args.features_dim = 768
+        return backbone
 
+    
     
     backbone = torch.nn.Sequential(*layers)
     args.features_dim = get_output_channels_dim(backbone)  # Dinamically obtain number of channels in output
