@@ -22,7 +22,6 @@ from pytorch_lightning.callbacks import RichProgressBar, ModelCheckpoint, Learni
 from uuid import uuid4
 import os
 
-torch.backends.cudnn.benchmark = True  # Provides a speedup
 
 if __name__ == "__main__":
     # Initial setup: parser, logging...
@@ -64,15 +63,15 @@ if __name__ == "__main__":
         args, args.datasets_folder, args.dataset_name, "test")
     logging.info(f"Test set: {test_ds}")
 
-    # Initialize model
-    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds])
-    
     try:
         args.num_nodes = os.environ["SLURM_JOB_NUM_NODES"]
         args.num_devices = os.environ["SLURM_NTASKS_PER_NODE"]
     except:
         args.num_nodes = 1
         args.num_devices = torch.cuda.device_count()
+        
+    # Initialize model
+    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds])
 
     checkpoint_callback = ModelCheckpoint(
         monitor="val_recall5",
@@ -96,7 +95,7 @@ if __name__ == "__main__":
         logger = wandb_logger,
         callbacks = [checkpoint_callback, bar, lrmoniter],
         check_val_every_n_epoch = 5,
-        num_sanity_val_steps = 0,
+        num_sanity_val_steps = 0
     )
     if trainer.global_rank == 0:
         wandb_logger.experiment.config.update(vars(args))

@@ -15,6 +15,32 @@ from sklearn.neighbors import NearestNeighbors
 from torch.utils.data.dataloader import DataLoader
 import h5py
 import random
+from PIL import ImageOps, ImageFilter
+from torchvision.transforms import InterpolationMode
+
+
+class GaussianBlur(object):
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, img):
+        if np.random.rand() < self.p:
+            sigma = np.random.rand() * 1.9 + 0.1
+            return img.filter(ImageFilter.GaussianBlur(sigma))
+        else:
+            return img
+
+
+class Solarization(object):
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, img):
+        if np.random.rand() < self.p:
+            return ImageOps.solarize(img)
+        else:
+            return img
+
 
 base_transform = transforms.Compose(
     [

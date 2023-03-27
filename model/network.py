@@ -7,6 +7,8 @@ from torch import nn
 from os.path import join
 from transformers import ViTModel
 from google_drive_downloader import GoogleDriveDownloader as gdd
+from transformers import ViTMAEConfig, ViTMAEModel
+import torch.nn.functional as F
 
 from model.cct import cct_14_7x2_384
 from model.aggregation import Flatten
@@ -14,6 +16,7 @@ from model.normalization import L2Norm
 import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
 from model.byol.byol_pytorch import BYOL
+from model.vicreg.vicreg_pytorch import VICREG
 from model.sync_batchnorm import convert_model
 from model.vicreg.utils import adjust_learning_rate, LARS, exclude_bias_and_norm
 import datasets_ws
@@ -45,6 +48,7 @@ PRETRAINED_SSL_MODELS = {
     'simsiam': 'simsiam-resnet50'
 }
 
+
 class GeoLocalizationNet(nn.Module):
     """The used networks are composed of a backbone and an aggregation layer.
     """
@@ -75,7 +79,7 @@ class GeoLocalizationNet(nn.Module):
             self.non_local = nn.Sequential(*non_local_list)
             self.self_att = True
 
-    def forward(self, x):
+    def forward(self, x):   
         x = self.backbone(x)
         if self.self_att:
             x = self.non_local(x)
@@ -249,7 +253,7 @@ def get_backbone(args):
                         params.requires_grad = True
         args.features_dim = 384
         return backbone
-    elif args.backbone.startswith("vit"):
+    elif args.backbone == ("vit"):
         if args.resize[0] == 224:
             backbone = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
         elif args.resize[0] == 384:
@@ -270,7 +274,26 @@ def get_backbone(args):
                         params.requires_grad = True
         args.features_dim = 768
         return backbone
+    elif args.backbone == ("vitmae"):
+        if args.resize[0] == 224:
+            backbone = ViTMAEModel.from_pretrained("facebook/vit-mae-base")
+        else:
+            raise ValueError('Image size for ViT must be either 224 or 384')
+        if args.trunc_te:
+            logging.debug(f"Truncate ViT at transformers encoder {args.trunc_te}")
+            backbone.encoder.layer = backbone.encoder.layer[:args.trunc_te]
+        if args.freeze_te:
+            logging.debug(f"Freeze all the layers up to tranformer encoder {args.freeze_te+1}")
+            for p in backbone.parameters():
+                p.requires_grad = False
+            for name, child in backbone.encoder.layer.named_children():
+                if int(name) > args.freeze_te:
+                    for params in child.parameters():
+                        params.requires_grad = True
+        args.features_dim = 768
+        return backbone
 
+    
     
     backbone = torch.nn.Sequential(*layers)
     args.features_dim = get_output_channels_dim(backbone)  # Dinamically obtain number of channels in output
@@ -344,19 +367,32 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         hidden_layer = -1,
                         image_size=self.args.resize,
                         aggregation = self.aggregation)
-        if self.args.ssl_method == "simsiam":
+        elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
                         aggregation = self.aggregation,
                         use_momentum=False)
+        elif self.args.ssl_method == "vicreg":
+            self.return_loss = True
+            return VICREG(self.backbone,
+                        image_size = self.args.resize,
+                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        aggregation = self.aggregation)
+        elif self.args.ssl_method == "bt":
+            self.return_loss = True
+            return VICREG(self.backbone,
+                        image_size = self.args.resize,
+                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        aggregation = self.aggregation,
+                        use_bt_loss = True)
         else:
             raise NotImplementedError()
 
     def forward(self, x, pairs_local_indexes=None, return_feature=False):
         if return_feature:
-            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam":
+            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt":
                 feature = self.ssl_model(x, y=None, return_embedding=True, return_projection=False)
             else:
                 raise NotImplementedError()
@@ -376,7 +412,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def update(self):
         if self.args.ssl_method == "byol":
             self.ssl_model.update_moving_average()
-        elif self.args.ssl_method == "simsiam":
+        elif self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt":
             pass
         else:
             raise NotImplementedError()
@@ -527,6 +563,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                     self.train_ds.is_inference = True
                     self.aggregation.initialize_netvlad_layer(
                         self.args, self.train_ds, self.backbone)
+                    self.train_ds.is_inference = False
                 self.args.features_dim *= self.args.netvlad_clusters
 
     def optimizer_step(
