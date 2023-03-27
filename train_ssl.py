@@ -22,7 +22,6 @@ from pytorch_lightning.callbacks import RichProgressBar, ModelCheckpoint, Learni
 from uuid import uuid4
 import os
 
-torch.backends.cudnn.benchmark = True  # Provides a speedup
 
 if __name__ == "__main__":
     # Initial setup: parser, logging...
@@ -96,7 +95,7 @@ if __name__ == "__main__":
         logger = wandb_logger,
         callbacks = [checkpoint_callback, bar, lrmoniter],
         check_val_every_n_epoch = 5,
-        num_sanity_val_steps = 0,
+        num_sanity_val_steps = 0
     )
     if trainer.global_rank == 0:
         wandb_logger.experiment.config.update(vars(args))

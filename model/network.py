@@ -377,10 +377,16 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         elif self.args.ssl_method == "vicreg":
             self.return_loss = True
             return VICREG(self.backbone,
-                        hidden_layer = -1,
                         image_size = self.args.resize,
-                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices
+                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
                         aggregation = self.aggregation)
+        elif self.args.ssl_method == "bt":
+            self.return_loss = True
+            return VICREG(self.backbone,
+                        image_size = self.args.resize,
+                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        aggregation = self.aggregation,
+                        use_bt_loss = True)
         else:
             raise NotImplementedError()
 
@@ -406,7 +412,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def update(self):
         if self.args.ssl_method == "byol":
             self.ssl_model.update_moving_average()
-        elif self.args.ssl_method == "simsiam":
+        elif self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt":
             pass
         else:
             raise NotImplementedError()
@@ -557,6 +563,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                     self.train_ds.is_inference = True
                     self.aggregation.initialize_netvlad_layer(
                         self.args, self.train_ds, self.backbone)
+                    self.train_ds.is_inference = False
                 self.args.features_dim *= self.args.netvlad_clusters
 
     def optimizer_step(

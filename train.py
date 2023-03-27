@@ -20,8 +20,6 @@ from torch.utils.data.dataloader import DataLoader
 import wandb
 from uuid import uuid4
 
-torch.backends.cudnn.benchmark = True  # Provides a speedup
-
 
 # Initial setup: parser, logging...
 args = parser.parse_arguments()
