@@ -11,7 +11,7 @@ import torch
 import logging
 import numpy as np
 from tqdm import tqdm
-from torch import nn, optim
+import torch.nn as nn
 import multiprocessing
 from os.path import join, isdir
 from datetime import datetime
@@ -19,11 +19,6 @@ import torchvision.transforms as transforms
 from torch.utils.data.dataloader import DataLoader
 import wandb
 from uuid import uuid4
-
-from distributed import init_distributed_mode
-import torch.distributed as dist
-
-import wandb
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
 
@@ -38,7 +33,6 @@ args.save_dir = join(
 )
 commons.setup_logging(args.save_dir)
 commons.make_deterministic(args.seed)
-wandb.init(project="vg-ssl", entity="vg-ssl", config=vars(args))
 logging.info(f"Arguments: {args}")
 wandb.init(project="vg-ssl", entity="vg-ssl", config=vars(args))
 logging.info(f"The outputs are being saved in {args.save_dir}")
@@ -55,15 +49,6 @@ if args.method == 'triplet':
     train_ds = datasets_ws.TripletsDataset(
         args, args.datasets_folder, args.dataset_name, "train", args.negs_num_per_query
     )
-elif args.method == 'pair':
-    train_ds = datasets_ws.PairsDataset(
-        args, args.datasets_folder, args.dataset_name, "train"
-    )
-
-elif args.method == 'vicreg':
-    train_ds = datasets_ws.VicregDataset(
-        args, args.datasets_folder, args.dataset_name, "train"
-    )
 else:
     raise NotImplementedError('Unknown method is used')
 
@@ -78,101 +63,19 @@ test_ds = datasets_ws.BaseDataset(
 logging.info(f"Test set: {test_ds}")
 
 # Initialize model
-
-if args.method == 'vicreg':
-    model = network.VicregVGNet(args)
-else:
-    model = network.GeoLocalizationNet(args)
-
-vlad_ds = datasets_ws.TripletsDataset(
-        args, args.datasets_folder, args.dataset_name, "train", args.negs_num_per_query
-    )
-
+model = network.GeoLocalizationNet(args)
 model = model.to(args.device)
-
 if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
     if not args.resume:
-        vlad_ds.is_inference = True
+        train_ds.is_inference = True
         model.aggregation.initialize_netvlad_layer(
-            args, vlad_ds, model.backbone)
+            args, train_ds, model.backbone)
     args.features_dim *= args.netvlad_clusters
 
-model = nn.DataParallel(model)
-
-def exclude_bias_and_norm(p):
-    return p.ndim == 1
-
-
+model = torch.nn.DataParallel(model)
 
 # Setup Optimizer and Loss
-class LARS(optim.Optimizer):
-    def __init__(
-        self,
-        params,
-        lr,
-        weight_decay=0,
-        momentum=0.9,
-        eta=0.001,
-        weight_decay_filter=None,
-        lars_adaptation_filter=None,
-    ):
-        defaults = dict(
-            lr=lr,
-            weight_decay=weight_decay,
-            momentum=momentum,
-            eta=eta,
-            weight_decay_filter=weight_decay_filter,
-            lars_adaptation_filter=lars_adaptation_filter,
-        )
-        super().__init__(params, defaults)
-
-    @torch.no_grad()
-    def step(self):
-        for g in self.param_groups:
-            for p in g["params"]:
-                dp = p.grad
-
-                if dp is None:
-                    continue
-
-                if g["weight_decay_filter"] is None or not g["weight_decay_filter"](p):
-                    dp = dp.add(p, alpha=g["weight_decay"])
-
-                if g["lars_adaptation_filter"] is None or not g[
-                    "lars_adaptation_filter"
-                ](p):
-                    param_norm = torch.norm(p)
-                    update_norm = torch.norm(dp)
-                    one = torch.ones_like(param_norm)
-                    q = torch.where(
-                        param_norm > 0.0,
-                        torch.where(
-                            update_norm > 0, (g["eta"] * param_norm / update_norm), one
-                        ),
-                        one,
-                    )
-                    dp = dp.mul(q)
-
-                param_state = self.state[p]
-                if "mu" not in param_state:
-                    param_state["mu"] = torch.zeros_like(p)
-                mu = param_state["mu"]
-                mu.mul_(g["momentum"]).add_(dp)
-
-                p.add_(mu, alpha=-g["lr"])
-
-
-if args.method ==  'vicreg':
-    # optimizer = LARS(
-    #     model.parameters(),
-    #     lr=1e-5,
-    #     weight_decay=1e-6,
-    #     weight_decay_filter=exclude_bias_and_norm,
-    #     lars_adaptation_filter=exclude_bias_and_norm,
-    # )
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-
-elif args.aggregation == "crn":
+if args.aggregation == "crn":
     crn_params = list(model.module.aggregation.crn.parameters())
     net_params = list(model.module.backbone.parameters()) + list(
         [
@@ -229,9 +132,6 @@ if args.method == "triplet":
 else:
     raise NotImplementedError()
 
-
-
-
 # Resume model, optimizer, and other training parameters
 if args.resume:
     if args.aggregation != "crn":
@@ -254,12 +154,12 @@ if args.resume:
 else:
     best_r5 = start_epoch_num = not_improved_num = 0
 
-# if args.backbone.startswith("vit") or args.backbone.startswith("mae"):
-#     logging.info(f"Output dimension of the model is {args.features_dim}")
-# else:
-#     logging.info(
-#         f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
-#     )
+if args.backbone.startswith("vit"):
+    logging.info(f"Output dimension of the model is {args.features_dim}")
+else:
+    logging.info(
+        f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
+    )
 
 
 if torch.cuda.device_count() >= 2:
@@ -292,32 +192,8 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
                 pin_memory=(args.device == "cuda"),
                 drop_last=True,
             )
-        elif args.method == 'pairs':
-            # Compute pairs to use in the triplet loss
-            train_ds.is_inference = True
-            train_ds.compute_pairs(args, model)
-            train_ds.is_inference = False
-            pairs_dl = DataLoader(
-                dataset=train_ds,
-                num_workers=args.num_workers,
-                batch_size=args.train_batch_size,
-                collate_fn=datasets_ws.collate_fn,
-                pin_memory=(args.device == "cuda"),
-                drop_last=True,
-
-            )
-        elif args.method == "vicreg":
-            
-            train_ds.is_inference = False
-            vicreg_dl = DataLoader(
-                dataset=train_ds,
-                num_workers=args.num_workers,
-                batch_size=args.train_batch_size,
-                pin_memory=(args.device == "cuda"),
-                drop_last=True,
-            )
-
-
+        else:
+            raise NotImplementedError()
 
         if args.use_faiss_gpu:
             torch.cuda.empty_cache()
@@ -328,7 +204,6 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         # triplets_local_indexes shape: (train_batch_size*10)*3 ; because 10 triplets per query
         if args.method == "triplet":
             for images, triplets_local_indexes, _ in tqdm(triplets_dl, ncols=100):
-                print(images.shape )
 
                 # Flip all triplets or none
                 if args.horizontal_flip:
@@ -391,63 +266,6 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
                 epoch_losses = np.append(epoch_losses, batch_loss)
                 del loss_triplet
 
-        elif args.method == "pairs":
-            for images, pairs_local_indexes, _ in tqdm(pairs_dl, ncols=100):
-                
-                # Flip all pairs or none
-                if args.horizontal_flip:
-                    images = transforms.RandomHorizontalFlip()(images)
-
-                # Compute features of all images (images contains queries, positives and negatives)
-                features = model(images.to(args.device))
-                loss_pairs = 0
-
-                # TODO: loss function
-                # if args.criterion == "pairs":
-                #     pairs_local_indexes = torch.transpose(
-                #         pairs_local_indexes.view(
-                #             args.train_batch_size, 2
-                #         ),
-                #         1,
-                #         0,
-                #     )
-                #     for pairs in pairs_local_indexes:
-                #         queries_indexes, positives_indexes = pairs.T
-                #         loss_pairs += criterion_pairs(
-                #             features[queries_indexes],
-                #             features[positives_indexes],
-                #             features[negatives_indexes],
-                #         )
-
-                del features
-                loss_pairs /= args.train_batch_size
-
-                optimizer.zero_grad()
-                loss_pairs.backward()
-                optimizer.step()
-
-                # Keep track of all losses by appending them to epoch_losses
-                batch_loss = loss_pairs.item()
-                epoch_losses = np.append(epoch_losses, batch_loss)
-                del loss_pairs
-
-        elif args.method == "vicreg":
-            for x, y, _ in tqdm(vicreg_dl, ncols=100):
-
-
-                optimizer.zero_grad()
-                loss = model.forward(x, y)
-                loss = loss.sum()
-                loss.backward()
-                optimizer.step()
-
-                batch_loss = loss.item()
-                epoch_losses = np.append(epoch_losses, batch_loss)
-                del loss
-
-
-            
-
         logging.debug(
             f"Epoch[{epoch_num:02d}]({loop_num}/{loops_num}): "
             + f"current batch triplet loss = {batch_loss:.4f}, "
@@ -476,7 +294,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
             "best_r5": best_r5,
             "not_improved_num": not_improved_num,
         },
-        True,
+        is_best,
         filename="last_model.pth",
     )
 
@@ -507,7 +325,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
             break
 
 
-#logging.info(f"Best R@5: {best_r5:.1f}")
+logging.info(f"Best R@5: {best_r5:.1f}")
 logging.info(
     f"Trained for {epoch_num+1:02d} epochs, in total in {str(datetime.now() - start_time)[:-7]}"
 )

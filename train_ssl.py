@@ -64,15 +64,15 @@ if __name__ == "__main__":
         args, args.datasets_folder, args.dataset_name, "test")
     logging.info(f"Test set: {test_ds}")
 
-    # Initialize model
-    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds])
-    
     try:
         args.num_nodes = os.environ["SLURM_JOB_NUM_NODES"]
         args.num_devices = os.environ["SLURM_NTASKS_PER_NODE"]
     except:
         args.num_nodes = 1
         args.num_devices = torch.cuda.device_count()
+        
+    # Initialize model
+    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds])
 
     checkpoint_callback = ModelCheckpoint(
         monitor="val_recall5",

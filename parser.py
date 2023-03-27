@@ -18,14 +18,14 @@ def parse_arguments():
         "--ssl_method",
         type=str,
         default='simclr',
-        choices=["byol", "simclr", "simsiam"],
+        choices=["byol", "simclr", "simsiam", "vicreg", "bt"],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
         "--method",
         type=str,
         default='triplet',
-        choices=['triplet', 'pair', 'vicreg'],
+        choices=['triplet', 'pair'],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
@@ -114,7 +114,7 @@ def parse_arguments():
     parser.add_argument(
         "--backbone",
         type=str,
-        default="resnet50conv4",
+        default="resnet18conv4",
         choices=[
             "alexnet",
             "vgg16",
