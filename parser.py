@@ -25,7 +25,7 @@ def parse_arguments():
         "--method",
         type=str,
         default='triplet',
-        choices=["triplet", "pair"],
+        choices=['triplet', 'pair', 'vicreg'],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
@@ -114,7 +114,7 @@ def parse_arguments():
     parser.add_argument(
         "--backbone",
         type=str,
-        default="resnet18conv4",
+        default="resnet50conv4",
         choices=[
             "alexnet",
             "vgg16",
@@ -126,9 +126,15 @@ def parse_arguments():
             "resnet101conv5",
             "cct384",
             "vit",
+            "vitmae",
         ],
         help="_",
     )
+
+
+  
+
+
     parser.add_argument(
         "--l2",
         type=str,
