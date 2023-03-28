@@ -13,7 +13,7 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
     Obviously it is slower than test(), and can't be used with PCA.
     """
 
-    model = model.eval()
+    model.eval()
     if test_method == "nearest_crop" or test_method == "maj_voting":
         distances = np.empty(
             [eval_ds.queries_num * 5, eval_ds.database_num], dtype=np.float32
@@ -164,6 +164,24 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
     )
     return recalls, recalls_str
 
+def top_n_voting(topn, predictions, distances, maj_weight):
+    if topn == "top1":
+        n = 1
+        selected = 0
+    elif topn == "top5":
+        n = 5
+        selected = slice(0, 5)
+    elif topn == "top10":
+        n = 10
+        selected = slice(0, 10)
+    # find predictions that repeat in the first, first five,
+    # or fist ten columns for each crop
+    vals, counts = np.unique(predictions[:, selected], return_counts=True)
+    # for each prediction that repeats more than once,
+    # subtract from its score
+    for val, count in zip(vals[counts > 1], counts[counts > 1]):
+        mask = predictions[:, selected] == val
+        distances[:, selected][mask] -= maj_weight * count / n
 
 def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     """Compute features of the given dataset and compute the recalls."""
@@ -180,7 +198,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     if args.efficient_ram_testing:
         return test_efficient_ram_usage(args, eval_ds, model, test_method)
 
-    model = model.eval()
+    model.eval()
     with torch.no_grad():
         logging.debug("Extracting database features for evaluation/testing")
         # For database use "hard_resize", although it usually has no effect because database images have same resolution
@@ -333,23 +351,3 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
             rec in zip(args.recall_values, recalls)]
     )
     return recalls, recalls_str
-
-
-def top_n_voting(topn, predictions, distances, maj_weight):
-    if topn == "top1":
-        n = 1
-        selected = 0
-    elif topn == "top5":
-        n = 5
-        selected = slice(0, 5)
-    elif topn == "top10":
-        n = 10
-        selected = slice(0, 10)
-    # find predictions that repeat in the first, first five,
-    # or fist ten columns for each crop
-    vals, counts = np.unique(predictions[:, selected], return_counts=True)
-    # for each prediction that repeats more than once,
-    # subtract from its score
-    for val, count in zip(vals[counts > 1], counts[counts > 1]):
-        mask = predictions[:, selected] == val
-        distances[:, selected][mask] -= maj_weight * count / n

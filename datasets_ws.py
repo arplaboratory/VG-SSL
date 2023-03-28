@@ -14,6 +14,33 @@ from torch.utils.data.dataset import Subset
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.data.dataloader import DataLoader
 import h5py
+import random
+from PIL import ImageOps, ImageFilter
+from torchvision.transforms import InterpolationMode
+
+
+class GaussianBlur(object):
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, img):
+        if np.random.rand() < self.p:
+            sigma = np.random.rand() * 1.9 + 0.1
+            return img.filter(ImageFilter.GaussianBlur(sigma))
+        else:
+            return img
+
+
+class Solarization(object):
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, img):
+        if np.random.rand() < self.p:
+            return ImageOps.solarize(img)
+        else:
+            return img
+
 
 base_transform = transforms.Compose(
     [
@@ -457,7 +484,7 @@ class TripletsDataset(BaseDataset):
             shuffle=False,
             pin_memory=(args.device == "cuda"),
         )
-        model = model.eval()
+        model.eval()
 
         # RAMEfficient2DMatrix can be replaced by np.zeros, but using
         # RAMEfficient2DMatrix is RAM efficient for full database mining.
@@ -794,6 +821,7 @@ class PairsDataset(BaseDataset):
         split="train",
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
+        self.mining = args.mining
         self.is_inference = False
 
         identity_transform = transforms.Lambda(lambda x: x)
@@ -874,37 +902,6 @@ class PairsDataset(BaseDataset):
             list(self.queries_paths)
         self.queries_num = len(self.queries_paths)
 
-        # msls_weighted refers to the mining presented in MSLS paper's supplementary.
-        # Basically, images from uncommon domains are sampled more often. Works only with MSLS dataset.
-        # Temp disable msls_weighted
-        # if self.mining == "msls_weighted":
-        #     notes = [p.split("@")[-2] for p in self.queries_paths]
-        #     try:
-        #         night_indexes = np.where(
-        #             np.array([n.split("_")[0] == "night" for n in notes])
-        #         )[0]
-        #         sideways_indexes = np.where(
-        #             np.array([n.split("_")[1] == "sideways" for n in notes])
-        #         )[0]
-        #     except IndexError:
-        #         raise RuntimeError(
-        #             "You're using msls_weighted mining but this dataset "
-        #             + "does not have night/sideways information. Are you using Mapillary SLS?"
-        #         )
-        #     self.weights = np.ones(self.queries_num)
-        #     assert (
-        #         len(night_indexes) != 0 and len(sideways_indexes) != 0
-        #     ), "There should be night and sideways images for msls_weighted mining, but there are none. Are you using Mapillary SLS?"
-        #     self.weights[night_indexes] += self.queries_num / \
-        #         len(night_indexes)
-        #     self.weights[sideways_indexes] += self.queries_num / \
-        #         len(sideways_indexes)
-        #     self.weights /= self.weights.sum()
-        #     logging.info(
-        #         f"#sideways_indexes [{len(sideways_indexes)}/{self.queries_num}]; "
-        #         + "#night_indexes; [{len(night_indexes)}/{self.queries_num}]"
-        #     )
-
     def __getitem__(self, index):
         if self.is_inference:
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
@@ -939,43 +936,20 @@ class PairsDataset(BaseDataset):
     
     def compute_pairs(self, args, model):
         self.is_inference = True
-        if self.mining == "full":
-            raise NotImplementedError('Full mining for SSL is not implemented')
-        elif self.mining == "partial" or self.mining == "msls_weighted":
-            raise NotImplementedError('Partial mining for SSL is not implemented')
-        elif self.mining == "random":
+        if self.mining == "random":
             self.compute_pairs_random(args, model)
-
-    def get_query_features(self, query_index, cache):
-        query_features = cache[query_index + self.database_num]
-        if query_features is None:
-            raise RuntimeError(
-                f"For query {self.queries_paths[query_index]} "
-                + f"with index {query_index} features have not been computed!\n"
-                + "There might be some bug with caching"
-            )
-        return query_features
+        else:
+            raise NotImplementedError()
 
     def get_best_positive_index(self, args, query_index, cache, query_features):
-        positives_features = cache[self.hard_positives_per_query[query_index]]
-        if args.use_faiss_gpu:
-            faiss_index = faiss.GpuIndexFlatL2(
-                self.gpu_resources[0], args.features_dim)
-        else:
-            faiss_index = faiss.IndexFlatL2(args.features_dim)
-        faiss_index.add(positives_features)
-        # Search the best positive (within 10 meters AND nearest in features space)
-        _, best_positive_num = faiss_index.search(
-            query_features.reshape(1, -1), 1)
-        best_positive_index = self.hard_positives_per_query[query_index][best_positive_num[0]].item(
-        )
+        best_positive_index = random.choice(self.hard_positives_per_query[query_index]).item()
         return best_positive_index
 
     def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
         sampled_queries_indexes = np.random.choice(
-            self.queries_num, args.cache_refresh_rate, replace=False
+            self.queries_num, args.queries_per_epoch, replace=False
         )
         # Take all the positives
         positives_indexes = [
@@ -986,52 +960,14 @@ class PairsDataset(BaseDataset):
         ]  # Flatten list of lists to a list
         positives_indexes = list(np.unique(positives_indexes))
 
-        # Compute the cache only for queries and their positives, in order to find the best positive
-        subset_ds = Subset(
-            self, positives_indexes +
-            list(sampled_queries_indexes + self.database_num)
-        )
-        cache = TripletsDataset.compute_cache(
-            args, model, subset_ds, (len(self), args.features_dim)
-        )
-
-        if args.use_faiss_gpu:
-            # Tmp memory for faiss
-            torch.cuda.empty_cache()
-            self.gpu_resources = []
-            for i in range(2):
-                # 2 gpu resource for positive
-                res = faiss.StandardGpuResources()
-                res.setTempMemory(200 * 1024 * 1024)  # 200 MB
-                self.gpu_resources.append(res)
-
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
-            query_features = self.get_query_features(query_index, cache)
             best_positive_index = self.get_best_positive_index(
-                args, query_index, cache, query_features
+                args, query_index, None, None
             )
-
-            # Choose some random database images, from those remove the soft_positives, and then take the first 10 images as neg_indexes
-            # soft_positives = self.soft_positives_per_query[query_index]
-            # neg_indexes = np.random.choice(
-            #     self.database_num,
-            #     size=self.negs_num_per_query + len(soft_positives),
-            #     replace=False,
-            # )
-            # neg_indexes = np.setdiff1d(neg_indexes, soft_positives, assume_unique=True)[
-            #     : self.negs_num_per_query
-            # ]
-            
             self.pairs_global_indexes.append(
                 (query_index, best_positive_index)
             )
-
-        # Remove Tmp memory for faiss
-        del cache
-        if args.use_faiss_gpu:
-            del self.gpu_resources
-            torch.cuda.empty_cache()
 
         # self.pairs_global_indexes is a tensor of shape [1000, 2]
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)

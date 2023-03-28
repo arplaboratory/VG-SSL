@@ -4,6 +4,5 @@ This repo is to investigate visual place recognition with self-supervised learni
 
 The visual place recognition framework refers to *deep-visual-geo-localization-benchmark*(https://github.com/gmberton/deep-visual-geo-localization-benchmark).
 
-The self-supervised learning baselines refer to *VISSL*(https://github.com/facebookresearch/vissl).
-
 Thank you for these brilliant works!
+

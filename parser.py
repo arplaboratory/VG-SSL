@@ -10,6 +10,18 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--cosine_scheduler",
+        action="store_true",
+        help="Choose if we use cosine scheduler"
+    )
+    parser.add_argument(
+        "--ssl_method",
+        type=str,
+        default='simclr',
+        choices=["byol", "simclr", "simsiam", "vicreg", "bt"],
+        help="Choose to use triplet or pair"
+    )
+    parser.add_argument(
         "--method",
         type=str,
         default='triplet',
@@ -29,13 +41,13 @@ def parse_arguments():
     parser.add_argument(
         "--train_batch_size",
         type=int,
-        default=10,
+        default=4,
         help="Number of triplets (query, pos, negs) in a batch. Each triplet consists of 12 images",
     )
     parser.add_argument(
         "--infer_batch_size",
         type=int,
-        default=128,
+        default=16,
         help="Batch size for inference (caching and testing)",
     )
     parser.add_argument(
@@ -49,9 +61,9 @@ def parse_arguments():
         "--margin", type=float, default=0.1, help="margin for the triplet loss"
     )
     parser.add_argument(
-        "--epochs_num", type=int, default=1000, help="number of epochs to train for"
+        "--epochs_num", type=int, default=100, help="number of epochs to train for"
     )
-    parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.00001, help="_")
     parser.add_argument(
         "--lr_crn_layer",
@@ -66,7 +78,7 @@ def parse_arguments():
         help="Learning rate to finetune pretrained network when using CRN",
     )
     parser.add_argument(
-        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd"]
+        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd", "lars"]
     )
     parser.add_argument(
         "--cache_refresh_rate",
@@ -114,9 +126,15 @@ def parse_arguments():
             "resnet101conv5",
             "cct384",
             "vit",
+            "vitmae",
         ],
         help="_",
     )
+
+
+  
+
+
     parser.add_argument(
         "--l2",
         type=str,
@@ -178,7 +196,7 @@ def parse_arguments():
         "--pretrain",
         type=str,
         default="imagenet",
-        choices=["imagenet", "gldv2", "places", "none"],
+        choices=["imagenet", "gldv2", "places", "none", "simclr", "byol", "vicreg", "swav", "bt", "moco", "mocov2", "simsiam"],
         help="Select the pretrained weights for the starting network",
     )
     parser.add_argument(
