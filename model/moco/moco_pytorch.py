@@ -19,6 +19,7 @@ class MOCO(nn.Module):
                  K=65536,
                  moving_average_decay = 0.999,
                  T=0.07,
+                 shuffle_bn=False,
                  aggregation=None):
         """
         dim: feature dimension (default: 128)
@@ -34,6 +35,7 @@ class MOCO(nn.Module):
 
         self.K = K
         self.T = T
+        self.shuffle_bn = shuffle_bn
 
         # create the encoders
         # num_classes is the output fc dimension
@@ -157,14 +159,16 @@ class MOCO(nn.Module):
 
             # Momentum Update is done before zero_grad() outside
 
-            # shuffle for making use of BN
-            im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
+            if self.shuffle_bn:
+                # shuffle for making use of BN
+                im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
             k, _ = self.target_encoder(im_k)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
 
-            # undo shuffle
-            k = self._batch_unshuffle_ddp(k, idx_unshuffle)
+            if self.shuffle_bn:
+                # undo shuffle
+                k = self._batch_unshuffle_ddp(k, idx_unshuffle)
 
         # compute logits
         # Einstein sum is more intuitive
