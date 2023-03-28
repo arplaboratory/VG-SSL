@@ -146,12 +146,14 @@ class NetWrapper(nn.Module):
 
     def _get_projector(self, hidden):
         _, dim = hidden.shape
-        if self.mlp == "MLP"
+        if self.mlp == "MLP":
             create_mlp_fn = MLP
-        elif self.mlp == "SimsiamMLP"
+        elif self.mlp == "SimsiamMLP":
             create_mlp_fn = SimSiamMLP
         elif self.mlp == "NoBnMLP":
             create_mlp_fn = NoBnMLP
+        else:
+            raise NotImplementedError()
         projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size)
         return projector.to(hidden)
 
@@ -258,6 +260,7 @@ class BYOL(nn.Module):
         with torch.no_grad():
             if self.target_encoder is None:
                 self.target_encoder = self._get_target_encoder()
+            
             target_encoder =  self.target_encoder if self.use_momentum else self.online_encoder
             target_proj_one, _ = target_encoder(image_one)
             target_proj_two, _ = target_encoder(image_two)

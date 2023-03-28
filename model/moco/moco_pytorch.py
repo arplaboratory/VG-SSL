@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
 
-class MoCo(nn.Module):
+from model.byol.byol_pytorch import NetWrapper, EMA, get_module_device, set_requires_grad, update_moving_average
+import copy
+
+class MOCO(nn.Module):
     """
-    Build a MoCo model with: a query encoder, a key encoder, and a queue
+    Build a MoCov2 model with: a query encoder, a key encoder, and a queue
     https://arxiv.org/abs/1911.05722
     """
 
@@ -12,10 +15,10 @@ class MoCo(nn.Module):
                  image_size,
                  projection_size = 128,
                  projection_hidden_size = 2048,
+                 hidden_layer = -1,
                  K=65536,
                  moving_average_decay = 0.999,
                  T=0.07,
-                 mlp=False,
                  aggregation=None):
         """
         dim: feature dimension (default: 128)
@@ -31,23 +34,20 @@ class MoCo(nn.Module):
 
         self.K = K
         self.T = T
-        self.mlp = mlp
 
         # create the encoders
         # num_classes is the output fc dimension
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="NoBnMLP", aggregation=self.aggregation)
-        self.use_momentum = use_momentum
+        self.use_momentum = True
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
-
-        self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
 
         # get device of network and make wrapper same device
         device = get_module_device(net)
         self.to(device)
 
         # create the queue
-        self.register_buffer("queue", torch.randn(dim, K))
+        self.register_buffer("queue", torch.randn(projection_size, K))
         self.queue = nn.functional.normalize(self.queue, dim=0)
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
@@ -133,7 +133,7 @@ class MoCo(nn.Module):
 
         return x_gather[idx_this]
 
-    def forward(self, im_q, im_k):
+    def forward(self, im_q, im_k, return_embedding=False, return_projection=True):
         """
         Input:
             im_q: a batch of query images
@@ -142,20 +142,25 @@ class MoCo(nn.Module):
             logits, targets
         """
 
+        if return_embedding:
+            return self.online_encoder(im_q, return_projection = return_projection)
+
         # compute query features
-        q = self.online_encoder(im_q)  # queries: NxC
+        q, _ = self.online_encoder(im_q)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
-        if self.target_encoder is None:
+            if self.target_encoder is None:
                 self.target_encoder = self._get_target_encoder()
-            self.update_moving_average()  # update the key encoder
+                return
+
+            # Momentum Update is done before zero_grad() outside
 
             # shuffle for making use of BN
             im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
-            k = self.target_encoder(im_k)  # keys: NxC
+            k, _ = self.target_encoder(im_k)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle
@@ -180,7 +185,7 @@ class MoCo(nn.Module):
         # dequeue and enqueue
         self._dequeue_and_enqueue(k)
 
-        loss = criterion(logits, labels)
+        loss = self.criterion(logits, labels)
 
         return loss.mean()
 
