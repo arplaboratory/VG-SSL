@@ -10,7 +10,8 @@ class MoCo(nn.Module):
     def __init__(self,
                  net,
                  image_size,
-                 dim=128,
+                 projection_size = 128,
+                 projection_hidden_size = 2048,
                  K=65536,
                  moving_average_decay = 0.999,
                  T=0.07,
@@ -25,6 +26,7 @@ class MoCo(nn.Module):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
+        self.criterion = nn.CrossEntropyLoss()
         # Augmentation is finished outside
 
         self.K = K
@@ -33,7 +35,7 @@ class MoCo(nn.Module):
 
         # create the encoders
         # num_classes is the output fc dimension
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, aggregation=self.aggregation)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="NoBnMLP", aggregation=self.aggregation)
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
@@ -47,7 +49,6 @@ class MoCo(nn.Module):
         # create the queue
         self.register_buffer("queue", torch.randn(dim, K))
         self.queue = nn.functional.normalize(self.queue, dim=0)
-
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
         # send a mock image tensor to instantiate singleton parameters
@@ -142,17 +143,19 @@ class MoCo(nn.Module):
         """
 
         # compute query features
-        q = self.encoder_q(im_q)  # queries: NxC
+        q = self.online_encoder(im_q)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
-            self._momentum_update_key_encoder()  # update the key encoder
+        if self.target_encoder is None:
+                self.target_encoder = self._get_target_encoder()
+            self.update_moving_average()  # update the key encoder
 
             # shuffle for making use of BN
             im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
-            k = self.encoder_k(im_k)  # keys: NxC
+            k = self.target_encoder(im_k)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle
@@ -177,7 +180,9 @@ class MoCo(nn.Module):
         # dequeue and enqueue
         self._dequeue_and_enqueue(k)
 
-        return logits, labels
+        loss = criterion(logits, labels)
+
+        return loss.mean()
 
 
 # utils
