@@ -392,13 +392,22 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return MOCO(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
+                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
                         aggregation = self.aggregation)
+        elif self.args.ssl_method == "simclr":
+            self.return_loss = True
+            return MOCO(self.backbone,
+                        hidden_layer = -1,
+                        image_size = self.args.resize,
+                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        aggregation = self.aggregation,
+                        use_simclr = True)
         else:
             raise NotImplementedError()
 
     def forward(self, x, pairs_local_indexes=None, return_feature=False):
         if return_feature:
-            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt" or self.args.ssl_method == "mocov2":
+            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt" or self.args.ssl_method == "mocov2" or self.args.ssl_method == "simclr":
                 feature = self.ssl_model(x, None, return_embedding=True, return_projection=False)
             else:
                 raise NotImplementedError()
@@ -418,7 +427,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def update(self):
         if self.args.ssl_method == "byol" or self.args.ssl_method == "mocov2":
             self.ssl_model.update_moving_average()
-        elif self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt":
+        elif self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt" or self.args.ssl_method == "simclr":
             pass
         else:
             raise NotImplementedError()
