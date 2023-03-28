@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from model.byol.byol_pytorch import NetWrapper, EMA, get_module_device, set_requires_grad, update_moving_average
 from model.vicreg.vicreg_pytorch import FullGatherLayer
@@ -9,7 +10,7 @@ def info_nce_loss(features, device, batch_size, temperature, n_views=2):
 
     labels = torch.cat([torch.arange(batch_size) for i in range(n_views)], dim=0)
     labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
-    labels = labels.to(self.args.device)
+    labels = labels.to(device)
 
     features = F.normalize(features, dim=1)
 
@@ -45,6 +46,7 @@ class MOCO(nn.Module):
     def __init__(self,
                  net,
                  image_size,
+                 batch_size,
                  projection_size = 128,
                  projection_hidden_size = 2048,
                  hidden_layer = -1,
@@ -53,7 +55,8 @@ class MOCO(nn.Module):
                  T=0.07,
                  shuffle_bn=False,
                  use_simclr=False,
-                 aggregation=None):
+                 aggregation=None,
+                 device="cuda"):
         """
         dim: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
@@ -66,9 +69,11 @@ class MOCO(nn.Module):
         self.criterion = nn.CrossEntropyLoss()
         # Augmentation is finished outside
 
+        self.batch_size = batch_size
         self.K = K
         self.T = T
         self.shuffle_bn = shuffle_bn
+        self.use_simclr = use_simclr
 
         # create the encoders
         # num_classes is the output fc dimension
@@ -78,7 +83,7 @@ class MOCO(nn.Module):
         self.target_ema_updater = EMA(moving_average_decay)
 
         # get device of network and make wrapper same device
-        device = get_module_device(net)
+        self.device = device
         self.to(device)
 
         # create the queue
@@ -219,7 +224,7 @@ class MOCO(nn.Module):
             q = torch.cat(FullGatherLayer.apply(q), dim=0)
             k = torch.cat(FullGatherLayer.apply(k), dim=0)
             features = torch.cat([q, k], dim = 0)
-            logits, labels = info_nce_loss(features, self.args.device, self.args.batch_size, self.T):
+            logits, labels = info_nce_loss(features, self.device, self.batch_size, self.T)
         else:
             # moco logit and label calculation
             # compute logits

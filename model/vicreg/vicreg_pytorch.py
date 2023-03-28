@@ -52,14 +52,15 @@ class VICREG(nn.Module):
         self,
         net,
         image_size,
-        batch_size = 1,
-        aggregation = None,
+        batch_size,
         use_bt_loss = False,
         sim_coeff = 25.0,
         std_coeff = 25.0,
         cov_coeff = 1.0,
         lambd = 0.0051,
         mlp = "8192-8192-8192",
+        aggregation = None,
+        device = "cuda"
     ):
         super().__init__()
         self.net = net
@@ -78,7 +79,6 @@ class VICREG(nn.Module):
         self.batch_size = batch_size
 
         # get device of network and make wrapper same device
-        device = get_module_device(net)
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters

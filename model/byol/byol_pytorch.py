@@ -200,6 +200,7 @@ class BYOL(nn.Module):
         moving_average_decay = 0.99,
         use_momentum = True,
         aggregation = None,
+        device = "cuda"
     ):
         super().__init__()
         self.net = net
@@ -214,7 +215,6 @@ class BYOL(nn.Module):
         self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
 
         # get device of network and make wrapper same device
-        device = get_module_device(net)
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
