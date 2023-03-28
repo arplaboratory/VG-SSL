@@ -2,7 +2,39 @@ import torch
 import torch.nn as nn
 
 from model.byol.byol_pytorch import NetWrapper, EMA, get_module_device, set_requires_grad, update_moving_average
+from model.vicreg.vicreg_pytorch import FullGatherLayer
 import copy
+
+def info_nce_loss(features, device, batch_size, temperature, n_views=2):
+
+    labels = torch.cat([torch.arange(batch_size) for i in range(n_views)], dim=0)
+    labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
+    labels = labels.to(self.args.device)
+
+    features = F.normalize(features, dim=1)
+
+    similarity_matrix = torch.matmul(features, features.T)
+    # assert similarity_matrix.shape == (
+    #     self.args.n_views * batch_size, self.args.n_views * batch_size)
+    # assert similarity_matrix.shape == labels.shape
+
+    # discard the main diagonal from both: labels and similarities matrix
+    mask = torch.eye(labels.shape[0], dtype=torch.bool).to(device)
+    labels = labels[~mask].view(labels.shape[0], -1)
+    similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)
+    # assert similarity_matrix.shape == labels.shape
+
+    # select and combine multiple positives
+    positives = similarity_matrix[labels.bool()].view(labels.shape[0], -1)
+
+    # select only the negatives the negatives
+    negatives = similarity_matrix[~labels.bool()].view(similarity_matrix.shape[0], -1)
+
+    logits = torch.cat([positives, negatives], dim=1)
+    labels = torch.zeros(logits.shape[0], dtype=torch.long).to(device)
+
+    logits = logits / temperature
+    return logits, labels
 
 class MOCO(nn.Module):
     """
@@ -20,6 +52,7 @@ class MOCO(nn.Module):
                  moving_average_decay = 0.999,
                  T=0.07,
                  shuffle_bn=False,
+                 use_simclr=False,
                  aggregation=None):
         """
         dim: feature dimension (default: 128)
@@ -152,42 +185,62 @@ class MOCO(nn.Module):
         q = nn.functional.normalize(q, dim=1)
 
         # compute key features
-        with torch.no_grad():  # no gradient to keys
+        if self.use_simclr:
             if self.target_encoder is None:
-                self.target_encoder = self._get_target_encoder()
+                self.target_encoder = self.online_encoder
                 return
-
-            # Momentum Update is done before zero_grad() outside
-
-            if self.shuffle_bn:
-                # shuffle for making use of BN
-                im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
             k, _ = self.target_encoder(im_k)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
+        else:
+            with torch.no_grad():  # no gradient to keys
+                if self.target_encoder is None:
+                    self.target_encoder = self._get_target_encoder()
+                    return
 
-            if self.shuffle_bn:
-                # undo shuffle
-                k = self._batch_unshuffle_ddp(k, idx_unshuffle)
+                # Momentum Update is done before zero_grad() outside
 
-        # compute logits
-        # Einstein sum is more intuitive
-        # positive logits: Nx1
-        l_pos = torch.einsum("nc,nc->n", [q, k]).unsqueeze(-1)
-        # negative logits: NxK
-        l_neg = torch.einsum("nc,ck->nk", [q, self.queue.clone().detach()])
+                if self.shuffle_bn:
+                    # shuffle for making use of BN
+                    im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
-        # logits: Nx(1+K)
-        logits = torch.cat([l_pos, l_neg], dim=1)
+                k, _ = self.target_encoder(im_k)  # keys: NxC
+                k = nn.functional.normalize(k, dim=1)
 
-        # apply temperature
-        logits /= self.T
+                if self.shuffle_bn:
+                    # undo shuffle
+                    k = self._batch_unshuffle_ddp(k, idx_unshuffle)
 
-        # labels: positive key indicators
-        labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()
+        if self.use_simclr:
+            # simclr logit and label calculation
+            # feature should be concated as 
+            # query_1 query_2 query_3 ... query_n pos_1 pos2 pos3 ... pos_n
+            # n is batch size
+            q = torch.cat(FullGatherLayer.apply(q), dim=0)
+            k = torch.cat(FullGatherLayer.apply(k), dim=0)
+            features = torch.cat([q, k], dim = 0)
+            logits, labels = info_nce_loss(features, self.args.device, self.args.batch_size, self.T):
+        else:
+            # moco logit and label calculation
+            # compute logits
+            # Einstein sum is more intuitive
+            # positive logits: Nx1
+            l_pos = torch.einsum("nc,nc->n", [q, k]).unsqueeze(-1)
+            # negative logits: NxK
+            l_neg = torch.einsum("nc,ck->nk", [q, self.queue.clone().detach()])
+
+            # logits: Nx(1+K)
+            logits = torch.cat([l_pos, l_neg], dim=1)
+
+            # apply temperature
+            logits /= self.T
+
+            # labels: positive key indicators
+            labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()
 
         # dequeue and enqueue
-        self._dequeue_and_enqueue(k)
+        if not self.use_simclr:
+            self._dequeue_and_enqueue(k)
 
         loss = self.criterion(logits, labels)
 
