@@ -93,7 +93,7 @@ if __name__ == "__main__":
         reload_dataloaders_every_n_epochs = 1,
         logger = wandb_logger,
         callbacks = [checkpoint_callback, bar, lrmoniter],
-        check_val_every_n_epoch = 5,
+        check_val_every_n_epoch = 1,
         num_sanity_val_steps = 0
     )
     if trainer.global_rank == 0:

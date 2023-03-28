@@ -358,7 +358,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.ssl_model = self.get_ssl_model()
         self.train_ds, self.val_ds, self.test_ds = ds_list
         self.all_features = None
-        self.best_r5 = None
         self.lr = 0
 
     def get_ssl_model(self):
@@ -474,9 +473,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 # del features
 
             # loss_pairs /= self.args.train_batch_size
-            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, rank_zero_only=True)
-            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, rank_zero_only=True)
-            return {'loss': loss_pairs}
+            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, sync_dist=True)
+            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, sync_dist=True)
+            return {"loss": loss_pairs}
         else:
             raise NotImplementedError()
     
@@ -534,11 +533,15 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def on_validation_epoch_end(self):
         if self.trainer.is_global_zero:
             recalls, recalls_str = self._shared_on_eval_epoch_end(self.val_ds, self.args)
-            if self.best_r5 is None or self.best_r5 < recalls[1]:
-                self.best_r5 = recalls[1]
-            self.log("val_recall1", recalls[0])
-            self.log("val_recall5", recalls[1])
-            self.log("val_best_r5", self.best_r5)
+            logging.debug(f"val_recall5:{recalls[1]}")
+            logging.debug(f"val_recall1:{recalls[0]}")
+        else:
+            recalls = np.zeros(len(self.args.recall_values))
+        self.trainer.strategy.barrier()
+        recalls = self.all_gather(recalls)[0]
+        self.log("val_recall5", recalls[1], on_epoch=True, logger=True)
+        self.log("val_recall1", recalls[0], on_epoch=True, logger=True)
+        
 
     def on_test_epoch_start(self):
         self._shared_on_eval_epoch_start(self.test_ds, self.args)
@@ -549,9 +552,14 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def on_test_epoch_end(self):
         if self.trainer.is_global_zero:
             recalls, recalls_str = self._shared_on_eval_epoch_end(self.test_ds, self.args)
-            log_dict = {"test_recall1":recalls[0], "test_recall5":recalls[1]}
-            self.log("test_recall1", recalls[0])
-            self.log("test_recall5", recalls[1])
+            logging.debug(f"test_recall5:{recalls[1]}")
+            logging.debug(f"test_recall1:{recalls[0]}")
+        else:
+            recalls = np.zeros(len(self.args.recall_values))
+        self.trainer.strategy.barrier()
+        recalls = self.all_gather(recalls)[0]
+        self.log("test_recall5", recalls[1], logger=True)
+        self.log("test_recall1", recalls[0], logger=True)
 
     def configure_optimizers(self):
         optimizer, self.criterion_pairs = setup_optimizer_loss(self.args, self.ssl_model.parameters(), return_loss=True)
