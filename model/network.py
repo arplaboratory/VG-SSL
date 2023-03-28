@@ -17,6 +17,7 @@ import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
 from model.byol.byol_pytorch import BYOL
 from model.vicreg.vicreg_pytorch import VICREG
+from model.moco.moco_pytorch import MOCO
 from model.sync_batchnorm import convert_model
 from model.vicreg.utils import adjust_learning_rate, LARS, exclude_bias_and_norm
 import datasets_ws
@@ -387,13 +388,19 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
                         aggregation = self.aggregation,
                         use_bt_loss = True)
+        elif self.args.ssl_method == "mocov2":
+            self.return_loss = True
+            return MOCO(self.backbone,
+                        hidden_layer = -1,
+                        image_size = self.args.resize,
+                        aggregation = self.aggregation)
         else:
             raise NotImplementedError()
 
     def forward(self, x, pairs_local_indexes=None, return_feature=False):
         if return_feature:
-            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt":
-                feature = self.ssl_model(x, y=None, return_embedding=True, return_projection=False)
+            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt" or self.args.ssl_method == "mocov2":
+                feature = self.ssl_model(x, None, return_embedding=True, return_projection=False)
             else:
                 raise NotImplementedError()
             return feature
@@ -410,7 +417,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             raise NotImplementedError()
         
     def update(self):
-        if self.args.ssl_method == "byol":
+        if self.args.ssl_method == "byol" or self.args.ssl_method == "mocov2":
             self.ssl_model.update_moving_average()
         elif self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt":
             pass
