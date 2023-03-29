@@ -15,7 +15,6 @@ from os.path import join, isdir
 from datetime import datetime
 import torchvision.transforms as transforms
 from torch.utils.data.dataloader import DataLoader
-from model.vicreg.utils import LARS, adjust_learning_rate, exclude_bias_and_norm
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import RichProgressBar, ModelCheckpoint, LearningRateMonitor
@@ -64,8 +63,8 @@ if __name__ == "__main__":
     logging.info(f"Test set: {test_ds}")
 
     try:
-        args.num_nodes = os.environ["SLURM_JOB_NUM_NODES"]
-        args.num_devices = os.environ["SLURM_NTASKS_PER_NODE"]
+        args.num_nodes = int(os.environ["SLURM_JOB_NUM_NODES"])
+        args.num_devices = int(os.environ["SLURM_NTASKS_PER_NODE"])
     except:
         args.num_nodes = 1
         args.num_devices = torch.cuda.device_count()
@@ -94,7 +93,7 @@ if __name__ == "__main__":
         reload_dataloaders_every_n_epochs = 1,
         logger = wandb_logger,
         callbacks = [checkpoint_callback, bar, lrmoniter],
-        check_val_every_n_epoch = 5,
+        check_val_every_n_epoch = 1,
         num_sanity_val_steps = 0
     )
     if trainer.global_rank == 0:

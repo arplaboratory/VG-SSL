@@ -61,6 +61,12 @@ def update_moving_average(ema_updater, ma_model, current_model):
         ma_params.data = ema_updater.update_average(old_weight, up_weight)
 
 # MLP class for projector and predictor
+def NoBnMLP(dim, projection_size, hidden_size=4096):
+    return nn.Sequential(
+        nn.Linear(dim, hidden_size),
+        nn.ReLU(inplace=True),
+        nn.Linear(hidden_size, projection_size)
+    )
 
 def MLP(dim, projection_size, hidden_size=4096):
     return nn.Sequential(
@@ -87,7 +93,7 @@ def SimSiamMLP(dim, projection_size, hidden_size=4096):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, use_simsiam_mlp = False, aggregation = None):
+    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
@@ -97,7 +103,10 @@ class NetWrapper(nn.Module):
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
 
-        self.use_simsiam_mlp = use_simsiam_mlp
+        if mlp in ["MLP", "SimsiamMLP", "NoBnMLP"]:
+            self.mlp = mlp
+        else:
+            raise NotImplementedError()
 
         self.hidden = {}
         self.hook_registered = False
@@ -123,7 +132,14 @@ class NetWrapper(nn.Module):
 
     def _get_projector(self, hidden):
         _, dim = hidden.shape
-        create_mlp_fn = MLP if not self.use_simsiam_mlp else SimSiamMLP
+        if self.mlp == "MLP":
+            create_mlp_fn = MLP
+        elif self.mlp == "SimsiamMLP":
+            create_mlp_fn = SimSiamMLP
+        elif self.mlp == "NoBnMLP":
+            create_mlp_fn = NoBnMLP
+        else:
+            raise NotImplementedError()
         projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size)
         return projector.to(hidden)
 
@@ -170,13 +186,14 @@ class BYOL(nn.Module):
         moving_average_decay = 0.99,
         use_momentum = True,
         aggregation = None,
+        device = "cuda"
     ):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
         # Augmentation is finished outside
 
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, use_simsiam_mlp=not use_momentum, aggregation=self.aggregation)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation)
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
@@ -184,7 +201,6 @@ class BYOL(nn.Module):
         self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
 
         # get device of network and make wrapper same device
-        device = get_module_device(net)
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
@@ -230,6 +246,7 @@ class BYOL(nn.Module):
         with torch.no_grad():
             if self.target_encoder is None:
                 self.target_encoder = self._get_target_encoder()
+            
             target_encoder =  self.target_encoder if self.use_momentum else self.online_encoder
             target_proj_one, _ = target_encoder(image_one)
             target_proj_two, _ = target_encoder(image_two)
