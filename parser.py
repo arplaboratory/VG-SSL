@@ -17,8 +17,8 @@ def parse_arguments():
     parser.add_argument(
         "--ssl_method",
         type=str,
-        default='simclr',
-        choices=["byol", "simclr", "simsiam", "vicreg", "bt", "mocov2"],
+        default='none',
+        choices=["none", "byol", "simclr", "simsiam", "vicreg", "bt", "mocov2"],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
