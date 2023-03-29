@@ -46,7 +46,8 @@ class MOCO(nn.Module):
     def __init__(self,
                  net,
                  image_size,
-                 batch_size,
+                 num_nodes,
+                 num_devices,
                  projection_size = 128,
                  projection_hidden_size = 2048,
                  hidden_layer = -1,
@@ -55,8 +56,7 @@ class MOCO(nn.Module):
                  T=0.07,
                  shuffle_bn=False,
                  use_simclr=False,
-                 aggregation=None,
-                 device="cuda"):
+                 aggregation=None):
         """
         dim: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
@@ -67,9 +67,10 @@ class MOCO(nn.Module):
         self.net = net
         self.aggregation = aggregation
         self.criterion = nn.CrossEntropyLoss()
+        self.num_nodes = num_nodes
+        self.num_devices = num_devices
         # Augmentation is finished outside
 
-        self.batch_size = batch_size
         self.K = K
         self.T = T
         self.shuffle_bn = shuffle_bn
@@ -83,7 +84,7 @@ class MOCO(nn.Module):
         self.target_ema_updater = EMA(moving_average_decay)
 
         # get device of network and make wrapper same device
-        self.device = device
+        device = get_module_device(self.net)
         self.to(device)
 
         # create the queue
@@ -115,7 +116,7 @@ class MOCO(nn.Module):
         # gather keys before updating queue
         keys = concat_all_gather(keys)
 
-        batch_size = keys.shape[0]
+        batch_size = keys.shape[0] # Use local batch size here
 
         ptr = int(self.queue_ptr)
         assert self.K % batch_size == 0  # for simplicity
@@ -224,7 +225,8 @@ class MOCO(nn.Module):
             q = torch.cat(FullGatherLayer.apply(q), dim=0)
             k = torch.cat(FullGatherLayer.apply(k), dim=0)
             features = torch.cat([q, k], dim = 0)
-            logits, labels = info_nce_loss(features, self.device, self.batch_size, self.T)
+            batch_size = im_q.shape[0] * self.num_nodes * self.num_devices # Infer global batch size here
+            logits, labels = info_nce_loss(features, self.device, batch_size, self.T)
         else:
             # moco logit and label calculation
             # compute logits
