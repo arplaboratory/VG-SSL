@@ -52,7 +52,8 @@ class VICREG(nn.Module):
         self,
         net,
         image_size,
-        batch_size,
+        num_nodes,
+        num_devices,
         use_bt_loss = False,
         sim_coeff = 25.0,
         std_coeff = 25.0,
@@ -60,11 +61,14 @@ class VICREG(nn.Module):
         lambd = 0.0051,
         mlp = "8192-8192-8192",
         aggregation = None,
-        device = "cuda"
     ):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
+        self.num_nodes = num_nodes
+        self.num_devices = num_devices
+        # Augmentation is finished outside
+
         self.use_bt_loss = use_bt_loss
         self.sim_coeff = sim_coeff
         self.std_coeff = std_coeff
@@ -72,13 +76,12 @@ class VICREG(nn.Module):
         self.lambd = lambd
         self.num_features = int(mlp.split("-")[-1])
         self.mlp = mlp
-        # Augmentation is finished outside
 
         self.projector = None
         self.bn = None
-        self.batch_size = batch_size
 
         # get device of network and make wrapper same device
+        device = get_module_device(self.net)
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
@@ -134,8 +137,9 @@ class VICREG(nn.Module):
             std_y = torch.sqrt(y.var(dim=0) + 0.0001)
             std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
 
-            cov_x = (x.T @ x) / (self.batch_size - 1)
-            cov_y = (y.T @ y) / (self.batch_size - 1)
+            batch_size = x.shape[0] # Since gathered, batch size is global
+            cov_x = (x.T @ x) / (batch_size - 1)
+            cov_y = (y.T @ y) / (batch_size - 1)
             cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
                 self.num_features
             ) + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
@@ -151,7 +155,8 @@ class VICREG(nn.Module):
             c = self.bn(z1).T @ self.bn(z2)
 
             # sum the cross-correlation matrix between all gpus
-            c.div_(self.batch_size)
+            batch_size = x.shape[0] * self.num_nodes * self.num_devices # Since not gathered, batch size is local and we need to make it global
+            c.div_(batch_size)
             torch.distributed.all_reduce(c)
 
             on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()

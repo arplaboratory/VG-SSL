@@ -21,8 +21,7 @@ from pytorch_lightning.callbacks import RichProgressBar, ModelCheckpoint, Learni
 from uuid import uuid4
 import os
 
-
-if __name__ == "__main__":
+def main():
     # Initial setup: parser, logging...
     args = parser.parse_arguments()
     start_time = datetime.now()
@@ -68,9 +67,9 @@ if __name__ == "__main__":
     except:
         args.num_nodes = 1
         args.num_devices = torch.cuda.device_count()
-        
+
     # Initialize model
-    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds])
+    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds], args.train_batch_size)
 
     checkpoint_callback = ModelCheckpoint(
         monitor="val_recall5",
@@ -100,3 +99,6 @@ if __name__ == "__main__":
         wandb_logger.experiment.config.update(vars(args))
     trainer.validate(model)
     trainer.fit(model)
+
+if __name__ == "__main__":
+    main()

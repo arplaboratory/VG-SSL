@@ -2,7 +2,6 @@
 import copy
 import random
 from functools import wraps
-
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -16,20 +15,6 @@ def default(val, def_val):
 
 def flatten(t):
     return t.reshape(t.shape[0], -1)
-
-def singleton(cache_key):
-    def inner_fn(fn):
-        @wraps(fn)
-        def wrapper(self, *args, **kwargs):
-            instance = getattr(self, cache_key)
-            if instance is not None:
-                return instance
-
-            instance = fn(self, *args, **kwargs)
-            setattr(self, cache_key, instance)
-            return instance
-        return wrapper
-    return inner_fn
 
 def get_module_device(module):
     return next(module.parameters()).device
@@ -194,17 +179,20 @@ class BYOL(nn.Module):
         self,
         net,
         image_size,
+        num_nodes,
+        num_devices,
         hidden_layer = -2,
         projection_size = 256,
         projection_hidden_size = 4096,
         moving_average_decay = 0.99,
         use_momentum = True,
-        aggregation = None,
-        device = "cuda"
+        aggregation = None
     ):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
+        self.num_nodes = num_nodes
+        self.num_devices = num_devices
         # Augmentation is finished outside
 
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation)
@@ -215,6 +203,7 @@ class BYOL(nn.Module):
         self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
 
         # get device of network and make wrapper same device
+        device = get_module_device(self.net)
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters

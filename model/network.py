@@ -1,4 +1,3 @@
-
 import os
 import torch
 import logging
@@ -348,7 +347,7 @@ def setup_optimizer_loss(args, model_parameters, return_loss=True):
 class SSLGeoLocalizationNet(pl.LightningModule):
     """The used networks are composed of a backbone and an aggregation layer.
     """
-    def __init__(self, args, ds_list):
+    def __init__(self, args, ds_list, batch_size = 2):
         super().__init__()
         self.args = args
         self.backbone = get_backbone(args)
@@ -359,32 +358,39 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.train_ds, self.val_ds, self.test_ds = ds_list
         self.all_features = None
         self.lr = 0
+        self.batch_size = batch_size
 
     def get_ssl_model(self):
         if self.args.ssl_method == "byol":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
-                        image_size=self.args.resize,
+                        image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
                         aggregation = self.aggregation)
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
                         use_momentum=False)
         elif self.args.ssl_method == "vicreg":
             self.return_loss = True
             return VICREG(self.backbone,
                         image_size = self.args.resize,
-                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
                         aggregation = self.aggregation)
         elif self.args.ssl_method == "bt":
             self.return_loss = True
             return VICREG(self.backbone,
                         image_size = self.args.resize,
-                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
                         use_bt_loss = True)
         elif self.args.ssl_method == "mocov2":
@@ -392,14 +398,16 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return MOCO(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
-                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
                         aggregation = self.aggregation)
         elif self.args.ssl_method == "simclr":
             self.return_loss = True
             return MOCO(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
-                        batch_size = self.args.train_batch_size * self.args.num_nodes * self.args.num_devices,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
                         use_simclr = True)
         else:
@@ -441,7 +449,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             pairs_dl = DataLoader(
                 dataset=self.train_ds,
                 num_workers=self.args.num_workers,
-                batch_size=self.args.train_batch_size,
+                batch_size=self.batch_size,
                 collate_fn=datasets_ws.collate_fn
             )
             return pairs_dl
@@ -481,9 +489,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 # loss_pairs = 0
                 # del features
 
-            # loss_pairs /= self.args.train_batch_size
-            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, sync_dist=True)
-            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, sync_dist=True)
+            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.batch_size, sync_dist=True)
+            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.batch_size, sync_dist=True)
             return {"loss": loss_pairs}
         else:
             raise NotImplementedError()
@@ -547,7 +554,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         else:
             recalls = np.zeros(len(self.args.recall_values))
         self.trainer.strategy.barrier()
-        recalls = self.all_gather(recalls)[0]
+        if self.trainer.num_devices == 1 and self.trainer.num_nodes == 1:
+            recalls = recalls
+        else:
+            recalls = self.all_gather(recalls)
+            recalls = recalls[0]
         self.log("val_recall5", recalls[1], on_epoch=True, logger=True)
         self.log("val_recall1", recalls[0], on_epoch=True, logger=True)
         
@@ -566,7 +577,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         else:
             recalls = np.zeros(len(self.args.recall_values))
         self.trainer.strategy.barrier()
-        recalls = self.all_gather(recalls)[0]
+        if self.trainer.num_devices == 1 and self.trainer.num_nodes == 1:
+            recalls = recalls
+        else:
+            recalls = self.all_gather(recalls)
+            recalls = recalls[0]
         self.log("test_recall5", recalls[1], logger=True)
         self.log("test_recall1", recalls[0], logger=True)
 
@@ -576,7 +591,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
     def on_before_zero_grad(self, _):
         if self.args.cosine_scheduler:
-            self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step, self.args.num_nodes, self.args.num_devices)
+            self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step, self.batch_size, self.trainer.num_nodes, self.trainer.num_devices)
         self.update()
 
     def setup(self, stage):
