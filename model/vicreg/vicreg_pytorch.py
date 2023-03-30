@@ -81,12 +81,12 @@ class VICREG(nn.Module):
         self.bn = None
 
         # get device of network and make wrapper same device
-        device = get_module_device(self.net)
-        self.to(device)
+        self.device = get_module_device(self.net)
+        self.to(self.device)
 
         # send a mock image tensor to instantiate singleton parameters
         self.eval()
-        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=device), torch.randn(2, 3, image_size[0], image_size[1], device=device))
+        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
         self.train()
 
     def _get_projector(self, hidden):
@@ -95,8 +95,7 @@ class VICREG(nn.Module):
         return projector.to(hidden)
 
     def _get_bn(self, hidden):
-        _, dim = hidden.shape
-        bn = nn.BatchNorm1d(dim, affine=False)
+        bn = nn.BatchNorm1d(self.num_features, affine=False)
         return bn.to(hidden)
 
     def forward(
@@ -128,8 +127,9 @@ class VICREG(nn.Module):
             # Use vicreg loss
             repr_loss = F.mse_loss(x, y)
 
-            x = torch.cat(FullGatherLayer.apply(x), dim=0)
-            y = torch.cat(FullGatherLayer.apply(y), dim=0)
+            if not (self.num_devices==1 and self.num_nodes==1):
+                x = torch.cat(FullGatherLayer.apply(x), dim=0)
+                y = torch.cat(FullGatherLayer.apply(y), dim=0)
             x = x - x.mean(dim=0)
             y = y - y.mean(dim=0)
 
@@ -152,12 +152,14 @@ class VICREG(nn.Module):
         else:
             # Use Barlow twins loss
             # empirical cross-correlation matrix
-            c = self.bn(z1).T @ self.bn(z2)
+            c = self.bn(x).T @ self.bn(y)
 
             # sum the cross-correlation matrix between all gpus
             batch_size = x.shape[0] * self.num_nodes * self.num_devices # Since not gathered, batch size is local and we need to make it global
             c.div_(batch_size)
-            torch.distributed.all_reduce(c)
+
+            if not (self.num_devices==1 and self.num_nodes==1):
+                torch.distributed.all_reduce(c)
 
             on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
             off_diag = off_diagonal(c).pow_(2).sum()

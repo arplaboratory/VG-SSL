@@ -203,12 +203,12 @@ class BYOL(nn.Module):
         self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
 
         # get device of network and make wrapper same device
-        device = get_module_device(self.net)
-        self.to(device)
+        self.device = get_module_device(self.net)
+        self.to(self.device)
 
         # send a mock image tensor to instantiate singleton parameters
         self.eval()
-        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=device), torch.randn(2, 3, image_size[0], image_size[1], device=device))
+        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
         self.train()
 
     def _get_target_encoder(self):
