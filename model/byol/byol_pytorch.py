@@ -260,5 +260,4 @@ class BYOL(nn.Module):
         loss_two = loss_fn(online_pred_two, target_proj_one.detach())
 
         loss = loss_one + loss_two
-        logging.debug
         return loss.mean()
