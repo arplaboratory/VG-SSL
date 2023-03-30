@@ -451,7 +451,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 num_workers=self.args.num_workers,
                 batch_size=self.batch_size,
                 collate_fn=datasets_ws.collate_fn,
-                drop_last=False if not(self.num_devices==1 and self.num_nodes==1) else True
+                drop_last=False if not(self.args.num_devices==1 and self.args.num_nodes==1) else True
             )
             return pairs_dl
         else:
