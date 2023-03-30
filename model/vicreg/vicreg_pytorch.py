@@ -153,7 +153,7 @@ class VICREG(nn.Module):
         else:
             # Use Barlow twins loss
             # empirical cross-correlation matrix
-            c = self.bn(z1).T @ self.bn(z2)
+            c = self.bn(x).T @ self.bn(y)
 
             # sum the cross-correlation matrix between all gpus
             batch_size = x.shape[0] * self.num_nodes * self.num_devices # Since not gathered, batch size is local and we need to make it global
