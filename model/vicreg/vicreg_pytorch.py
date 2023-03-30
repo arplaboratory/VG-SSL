@@ -81,8 +81,8 @@ class VICREG(nn.Module):
         self.bn = None
 
         # get device of network and make wrapper same device
-        device = get_module_device(self.net)
-        self.to(device)
+        self.device = get_module_device(self.net)
+        self.to(self.device)
 
         # send a mock image tensor to instantiate singleton parameters
         self.eval()

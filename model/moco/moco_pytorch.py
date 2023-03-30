@@ -84,8 +84,8 @@ class MOCO(nn.Module):
         self.target_ema_updater = EMA(moving_average_decay)
 
         # get device of network and make wrapper same device
-        device = get_module_device(self.net)
-        self.to(device)
+        self.device = get_module_device(self.net)
+        self.to(self.device)
 
         # create the queue
         self.register_buffer("queue", torch.randn(projection_size, K))
