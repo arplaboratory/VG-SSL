@@ -23,7 +23,7 @@ from uuid import uuid4
 
 # Initial setup: parser, logging...
 args = parser.parse_arguments()
-if args.ssl_method is not "none":
+if args.ssl_method != "none":
     raise ValueError("Training with triplets should set ssl_method to none")
 start_time = datetime.now()
 args.save_dir = join(
@@ -154,12 +154,12 @@ if args.resume:
 else:
     best_r5 = start_epoch_num = not_improved_num = 0
 
-if args.backbone.startswith("vit"):
-    logging.info(f"Output dimension of the model is {args.features_dim}")
-else:
-    logging.info(
-        f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
-    )
+# if args.backbone.startswith("vit"):
+#     logging.info(f"Output dimension of the model is {args.features_dim}")
+# else:
+#     logging.info(
+#         f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
+#     )
 
 
 if torch.cuda.device_count() >= 2:
@@ -170,6 +170,7 @@ if torch.cuda.device_count() >= 2:
 # First val loop for sanity check
 # Compute recalls on validation set
 recalls, recalls_str = test.test(args, val_ds, model)
+logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
 
 # Training loop
 for epoch_num in range(start_epoch_num, args.epochs_num):
