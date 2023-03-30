@@ -95,8 +95,7 @@ class VICREG(nn.Module):
         return projector.to(hidden)
 
     def _get_bn(self, hidden):
-        f = list(map(int, self.mlp.split("-")))
-        bn = nn.BatchNorm1d(f[-1], affine=False)
+        bn = nn.BatchNorm1d(self.num_features, affine=False)
         return bn.to(hidden)
 
     def forward(
