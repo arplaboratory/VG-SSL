@@ -443,6 +443,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def train_dataloader(self):
         if self.args.method == 'pair':
             # Compute pairs to use in the pair loss
+            # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
             self.train_ds.is_inference = True
             self.train_ds.compute_pairs(self.args, None)
             self.train_ds.is_inference = False
@@ -451,7 +452,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 num_workers=self.args.num_workers,
                 batch_size=self.batch_size,
                 collate_fn=datasets_ws.collate_fn,
-                drop_last=False if not(self.args.num_devices==1 and self.args.num_nodes==1) else True
+                drop_last=True
             )
             return pairs_dl
         else:
