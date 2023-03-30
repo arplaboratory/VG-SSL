@@ -208,7 +208,7 @@ class BYOL(nn.Module):
 
         # send a mock image tensor to instantiate singleton parameters
         self.eval()
-        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=device), torch.randn(2, 3, image_size[0], image_size[1], device=device))
+        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
         self.train()
 
     def _get_target_encoder(self):
@@ -260,4 +260,5 @@ class BYOL(nn.Module):
         loss_two = loss_fn(online_pred_two, target_proj_one.detach())
 
         loss = loss_one + loss_two
+        logging.debug
         return loss.mean()

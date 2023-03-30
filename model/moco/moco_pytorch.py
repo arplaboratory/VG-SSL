@@ -6,6 +6,21 @@ from model.byol.byol_pytorch import NetWrapper, EMA, get_module_device, set_requ
 from model.vicreg.vicreg_pytorch import FullGatherLayer
 import copy
 
+# utils
+@torch.no_grad()
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    tensors_gather = [
+        torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())
+    ]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output
+
 def info_nce_loss(features, device, batch_size, temperature, n_views=2):
 
     labels = torch.cat([torch.arange(batch_size) for i in range(n_views)], dim=0)
@@ -34,7 +49,7 @@ def info_nce_loss(features, device, batch_size, temperature, n_views=2):
     logits = torch.cat([positives, negatives], dim=1)
     labels = torch.zeros(logits.shape[0], dtype=torch.long).to(device)
 
-    logits = logits / temperature
+    logits = logits.div(temperature)
     return logits, labels
 
 class MOCO(nn.Module):
@@ -94,7 +109,7 @@ class MOCO(nn.Module):
 
         # send a mock image tensor to instantiate singleton parameters
         self.eval()
-        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=device), torch.randn(2, 3, image_size[0], image_size[1], device=device))
+        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
         self.train()
 
     def _get_target_encoder(self):
@@ -239,13 +254,13 @@ class MOCO(nn.Module):
             l_neg = torch.einsum("nc,ck->nk", [q, self.queue.clone().detach()])
 
             # logits: Nx(1+K)
-            logits = torch.cat([l_pos, l_neg], dim=1)
+            logits = torch.cat([l_pos, l_neg], dim=1).to(self.device)
 
             # apply temperature
             logits /= self.T
 
             # labels: positive key indicators
-            labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()
+            labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
 
         # dequeue and enqueue
         if not self.use_simclr:
@@ -254,19 +269,3 @@ class MOCO(nn.Module):
         loss = self.criterion(logits, labels)
 
         return loss.mean()
-
-
-# utils
-@torch.no_grad()
-def concat_all_gather(tensor):
-    """
-    Performs all_gather operation on the provided tensors.
-    *** Warning ***: torch.distributed.all_gather has no gradient.
-    """
-    tensors_gather = [
-        torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())
-    ]
-    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
-
-    output = torch.cat(tensors_gather, dim=0)
-    return output
