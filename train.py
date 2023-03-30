@@ -23,6 +23,8 @@ from uuid import uuid4
 
 # Initial setup: parser, logging...
 args = parser.parse_arguments()
+if args.ssl_method is not "none":
+    raise ValueError("Training with triplets should set ssl_method to none")
 start_time = datetime.now()
 args.save_dir = join(
     "logs",

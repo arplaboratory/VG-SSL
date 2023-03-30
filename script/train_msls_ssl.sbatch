@@ -11,4 +11,6 @@
 eval "$(conda shell.bash hook)"
 conda activate VPR_SSL
 
-srun python3 train_ssl.py --dataset_name=msls --mining random --datasets_folder=./datasets --seed $SEED --ssl_method $SSL --method pair --backbone resnet50conv4 --lr 0.2 --optim lars --cosine_scheduler --train_batch_size 32 --infer_batch_size 128
+opt_batch_size=`python3 find_batch_size.py --dataset_name=msls --mining random --datasets_folder=./datasets --seed $SEED --ssl_method $SSL --method pair --backbone resnet50conv4 --lr 0.2 --optim lars --cosine_scheduler --infer_batch_size 128`
+rm .scale_batch_size_*
+srun python3 train_ssl.py --dataset_name=msls --mining random --datasets_folder=./datasets --seed $SEED --ssl_method $SSL --method pair --backbone resnet50conv4 --lr 0.2 --optim lars --cosine_scheduler --train_batch_size $opt_batch_size --infer_batch_size 128
