@@ -65,7 +65,7 @@ def trial_run_for_tuning_batch_size(args):
     
     # Need manual setup
     model.setup(stage = "validate")
-    tuner = Tuner(trainer, enable_checkpointing=False)
+    tuner = Tuner(trainer)
     tuner.scale_batch_size(model, mode="power")
 
     logging.info("Tuning batch size with 1 GPU finished")
