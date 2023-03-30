@@ -114,7 +114,8 @@ class MOCO(nn.Module):
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
         # gather keys before updating queue
-        keys = concat_all_gather(keys)
+        if not(self.num_devices==1 and self.num_nodes==1):
+            keys = concat_all_gather(keys)
 
         batch_size = keys.shape[0] # Use local batch size here
 
@@ -222,8 +223,9 @@ class MOCO(nn.Module):
             # feature should be concated as 
             # query_1 query_2 query_3 ... query_n pos_1 pos2 pos3 ... pos_n
             # n is batch size
-            q = torch.cat(FullGatherLayer.apply(q), dim=0)
-            k = torch.cat(FullGatherLayer.apply(k), dim=0)
+            if not (self.num_devices==1 and self.num_nodes==1):
+                q = torch.cat(FullGatherLayer.apply(q), dim=0)
+                k = torch.cat(FullGatherLayer.apply(k), dim=0)
             features = torch.cat([q, k], dim = 0)
             batch_size = im_q.shape[0] * self.num_nodes * self.num_devices # Infer global batch size here
             logits, labels = info_nce_loss(features, self.device, batch_size, self.T)

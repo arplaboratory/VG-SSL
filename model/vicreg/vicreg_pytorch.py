@@ -128,8 +128,9 @@ class VICREG(nn.Module):
             # Use vicreg loss
             repr_loss = F.mse_loss(x, y)
 
-            x = torch.cat(FullGatherLayer.apply(x), dim=0)
-            y = torch.cat(FullGatherLayer.apply(y), dim=0)
+            if not (self.num_devices==1 and self.num_nodes==1):
+                x = torch.cat(FullGatherLayer.apply(x), dim=0)
+                y = torch.cat(FullGatherLayer.apply(y), dim=0)
             x = x - x.mean(dim=0)
             y = y - y.mean(dim=0)
 
@@ -157,7 +158,9 @@ class VICREG(nn.Module):
             # sum the cross-correlation matrix between all gpus
             batch_size = x.shape[0] * self.num_nodes * self.num_devices # Since not gathered, batch size is local and we need to make it global
             c.div_(batch_size)
-            torch.distributed.all_reduce(c)
+
+            if not (self.num_devices==1 and self.num_nodes==1):
+                torch.distributed.all_reduce(c)
 
             on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
             off_diag = off_diagonal(c).pow_(2).sum()
