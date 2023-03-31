@@ -54,6 +54,7 @@ class VICREG(nn.Module):
         image_size,
         num_nodes,
         num_devices,
+        skip_proj = False,
         use_bt_loss = False,
         sim_coeff = 25.0,
         std_coeff = 25.0,
@@ -114,14 +115,14 @@ class VICREG(nn.Module):
         x = self.aggregation(x)
         y = self.aggregation(y)
 
-        if self.projector is None:
-            self.projector = self._get_projector(x)
-            if self.use_bt_loss:
-                self.bn = self._get_bn(x)
-            return
-
-        x = self.projector(x)
-        y = self.projector(y)
+        if self.skip_proj == False:
+            if self.projector is None:
+                self.projector = self._get_projector(x)
+                if self.use_bt_loss:
+                    self.bn = self._get_bn(x)
+                return
+            x = self.projector(x)
+            y = self.projector(y)
 
         if not self.use_bt_loss:
             # Use vicreg loss

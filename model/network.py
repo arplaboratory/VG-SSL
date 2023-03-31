@@ -385,6 +385,15 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation)
+        elif self.args.ssl_method == "vicreg_no_proj":
+            self.return_loss = True
+            return VICREG(self.backbone,
+                        image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
+                        aggregation = self.aggregation,
+                        skip_proj = True)    
+
         elif self.args.ssl_method == "bt":
             self.return_loss = True
             return VICREG(self.backbone,
