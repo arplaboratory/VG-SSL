@@ -1,5 +1,6 @@
 #!/bin/bash 
 #SBATCH --nodes=1                        # requests 3 compute servers
+#SBATCH --nodes=1                        # requests 3 compute servers
 #SBATCH --ntasks-per-node=4              # runs 2 tasks on each server
 #SBATCH --cpus-per-task=8                # uses 1 compute core per task
 #SBATCH --gres=gpu:4

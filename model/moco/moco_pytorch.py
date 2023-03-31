@@ -6,6 +6,21 @@ from model.byol.byol_pytorch import NetWrapper, EMA, get_module_device, set_requ
 from model.vicreg.vicreg_pytorch import FullGatherLayer
 import copy
 
+# utils
+@torch.no_grad()
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    tensors_gather = [
+        torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())
+    ]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output
+
 def info_nce_loss(features, device, batch_size, temperature, n_views=2):
 
     labels = torch.cat([torch.arange(batch_size) for i in range(n_views)], dim=0)
@@ -34,7 +49,7 @@ def info_nce_loss(features, device, batch_size, temperature, n_views=2):
     logits = torch.cat([positives, negatives], dim=1)
     labels = torch.zeros(logits.shape[0], dtype=torch.long).to(device)
 
-    logits = logits / temperature
+    logits = logits.div(temperature)
     return logits, labels
 
 class MOCO(nn.Module):
@@ -84,8 +99,8 @@ class MOCO(nn.Module):
         self.target_ema_updater = EMA(moving_average_decay)
 
         # get device of network and make wrapper same device
-        device = get_module_device(self.net)
-        self.to(device)
+        self.device = get_module_device(self.net)
+        self.to(self.device)
 
         # create the queue
         self.register_buffer("queue", torch.randn(projection_size, K))
@@ -94,7 +109,7 @@ class MOCO(nn.Module):
 
         # send a mock image tensor to instantiate singleton parameters
         self.eval()
-        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=device), torch.randn(2, 3, image_size[0], image_size[1], device=device))
+        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
         self.train()
 
     def _get_target_encoder(self):
@@ -114,7 +129,8 @@ class MOCO(nn.Module):
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
         # gather keys before updating queue
-        keys = concat_all_gather(keys)
+        if not(self.num_devices==1 and self.num_nodes==1):
+            keys = concat_all_gather(keys)
 
         batch_size = keys.shape[0] # Use local batch size here
 
@@ -222,8 +238,9 @@ class MOCO(nn.Module):
             # feature should be concated as 
             # query_1 query_2 query_3 ... query_n pos_1 pos2 pos3 ... pos_n
             # n is batch size
-            q = torch.cat(FullGatherLayer.apply(q), dim=0)
-            k = torch.cat(FullGatherLayer.apply(k), dim=0)
+            if not (self.num_devices==1 and self.num_nodes==1):
+                q = torch.cat(FullGatherLayer.apply(q), dim=0)
+                k = torch.cat(FullGatherLayer.apply(k), dim=0)
             features = torch.cat([q, k], dim = 0)
             batch_size = im_q.shape[0] * self.num_nodes * self.num_devices # Infer global batch size here
             logits, labels = info_nce_loss(features, self.device, batch_size, self.T)
@@ -237,13 +254,13 @@ class MOCO(nn.Module):
             l_neg = torch.einsum("nc,ck->nk", [q, self.queue.clone().detach()])
 
             # logits: Nx(1+K)
-            logits = torch.cat([l_pos, l_neg], dim=1)
+            logits = torch.cat([l_pos, l_neg], dim=1).to(self.device)
 
             # apply temperature
             logits /= self.T
 
             # labels: positive key indicators
-            labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()
+            labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
 
         # dequeue and enqueue
         if not self.use_simclr:
@@ -252,19 +269,3 @@ class MOCO(nn.Module):
         loss = self.criterion(logits, labels)
 
         return loss.mean()
-
-
-# utils
-@torch.no_grad()
-def concat_all_gather(tensor):
-    """
-    Performs all_gather operation on the provided tensors.
-    *** Warning ***: torch.distributed.all_gather has no gradient.
-    """
-    tensors_gather = [
-        torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())
-    ]
-    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
-
-    output = torch.cat(tensors_gather, dim=0)
-    return output
