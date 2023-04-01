@@ -77,7 +77,7 @@ class VICREG(nn.Module):
         self.lambd = lambd
         self.num_features = int(mlp.split("-")[-1])
         self.mlp = mlp
-
+        self.skip_proj = skip_proj
         self.projector = None
         self.bn = None
 
