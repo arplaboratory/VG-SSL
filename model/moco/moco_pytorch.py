@@ -71,7 +71,8 @@ class MOCO(nn.Module):
                  T=0.07,
                  shuffle_bn=False,
                  use_simclr=False,
-                 aggregation=None):
+                 aggregation=None,
+                 disable_projector=False):
         """
         dim: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
@@ -84,6 +85,7 @@ class MOCO(nn.Module):
         self.criterion = nn.CrossEntropyLoss()
         self.num_nodes = num_nodes
         self.num_devices = num_devices
+        self.disable_projector = disable_projector
         # Augmentation is finished outside
 
         self.K = K
@@ -203,7 +205,7 @@ class MOCO(nn.Module):
             return self.online_encoder(im_q, return_projection = return_projection)
 
         # compute query features
-        q, _ = self.online_encoder(im_q)  # queries: NxC
+        q, _ = self.online_encoder(im_q, return_projection = not self.disable_projector)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
 
         # compute key features
@@ -212,7 +214,7 @@ class MOCO(nn.Module):
                 self.target_encoder = self.online_encoder
                 return
 
-            k, _ = self.target_encoder(im_k)  # keys: NxC
+            k, _ = self.target_encoder(im_k, return_projection = not self.disable_projector)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
         else:
             with torch.no_grad():  # no gradient to keys
@@ -226,7 +228,7 @@ class MOCO(nn.Module):
                     # shuffle for making use of BN
                     im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
-                k, _ = self.target_encoder(im_k)  # keys: NxC
+                k, _ = self.target_encoder(im_k, return_projection = not self.disable_projector)  # keys: NxC
                 k = nn.functional.normalize(k, dim=1)
 
                 if self.shuffle_bn:

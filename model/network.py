@@ -359,6 +359,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.all_features = None
         self.lr = 0
         self.batch_size = batch_size
+        self.disable_projector = args.disable_projector
 
     def get_ssl_model(self):
         if self.args.ssl_method == "byol":
@@ -368,7 +369,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        aggregation = self.aggregation)
+                        aggregation = self.aggregation,
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
@@ -377,14 +379,16 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
-                        use_momentum=False)
+                        use_momentum=False,
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "vicreg":
             self.return_loss = True
             return VICREG(self.backbone,
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        aggregation = self.aggregation)
+                        aggregation = self.aggregation,
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "bt":
             self.return_loss = True
             return VICREG(self.backbone,
@@ -392,7 +396,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
-                        use_bt_loss = True)
+                        use_bt_loss = True,
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "mocov2":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -400,7 +405,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        aggregation = self.aggregation)
+                        aggregation = self.aggregation,
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simclr":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -409,7 +415,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
-                        use_simclr = True)
+                        use_simclr = True,
+                        disable_projector = self.disable_projector)
         else:
             raise NotImplementedError()
 

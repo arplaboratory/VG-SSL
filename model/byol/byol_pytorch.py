@@ -186,13 +186,15 @@ class BYOL(nn.Module):
         projection_hidden_size = 4096,
         moving_average_decay = 0.99,
         use_momentum = True,
-        aggregation = None
+        aggregation = None,
+        disable_projector = False
     ):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
         self.num_nodes = num_nodes
         self.num_devices = num_devices
+        self.disable_projector = disable_projector
         # Augmentation is finished outside
 
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation)
@@ -240,8 +242,8 @@ class BYOL(nn.Module):
         # image one and two are proceeded outsides
         image_one, image_two = x, y
 
-        online_proj_one, _ = self.online_encoder(image_one)
-        online_proj_two, _ = self.online_encoder(image_two)
+        online_proj_one, _ = self.online_encoder(image_one, return_projection = not self.disable_projector)
+        online_proj_two, _ = self.online_encoder(image_two, return_projection = not self.disable_projector)
 
         online_pred_one = self.online_predictor(online_proj_one)
         online_pred_two = self.online_predictor(online_proj_two)
@@ -251,8 +253,8 @@ class BYOL(nn.Module):
                 self.target_encoder = self._get_target_encoder()
             
             target_encoder =  self.target_encoder if self.use_momentum else self.online_encoder
-            target_proj_one, _ = target_encoder(image_one)
-            target_proj_two, _ = target_encoder(image_two)
+            target_proj_one, _ = target_encoder(image_one, return_projection = not self.disable_projector)
+            target_proj_two, _ = target_encoder(image_two, return_projection = not self.disable_projector)
             target_proj_one.detach_()
             target_proj_two.detach_()
 

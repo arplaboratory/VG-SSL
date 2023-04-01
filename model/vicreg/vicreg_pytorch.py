@@ -61,12 +61,14 @@ class VICREG(nn.Module):
         lambd = 0.0051,
         mlp = "8192-8192-8192",
         aggregation = None,
+        disable_projector = disable_projector
     ):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
         self.num_nodes = num_nodes
         self.num_devices = num_devices
+        self.disable_projector = disable_projector
         # Augmentation is finished outside
 
         self.use_bt_loss = use_bt_loss
@@ -106,7 +108,10 @@ class VICREG(nn.Module):
         return_projection = True
     ):
         if return_embedding:
-            return self.aggregation(self.net(x))
+            if self.return_projection:
+                return self.projector(self.aggregation(self.net(x)))
+            else:
+                return self.aggregation(self.net(x))
 
         x = self.net(x)
         y = self.net(y)
@@ -120,8 +125,9 @@ class VICREG(nn.Module):
                 self.bn = self._get_bn(x)
             return
 
-        x = self.projector(x)
-        y = self.projector(y)
+        if not self.disable_projector:
+            x = self.projector(x)
+            y = self.projector(y)
 
         if not self.use_bt_loss:
             # Use vicreg loss
