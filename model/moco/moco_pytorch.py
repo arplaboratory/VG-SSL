@@ -95,7 +95,7 @@ class MOCO(nn.Module):
 
         # create the encoders
         # num_classes is the output fc dimension
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="NoBnMLP", aggregation=self.aggregation)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="NoBnMLP", aggregation=self.aggregation, disable_projector=self.disable_projector)
         self.use_momentum = True
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)

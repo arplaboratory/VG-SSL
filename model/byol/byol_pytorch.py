@@ -92,7 +92,7 @@ def SimSiamMLP(dim, projection_size, hidden_size=4096):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None):
+    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, disable_projector = False):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
@@ -131,15 +131,18 @@ class NetWrapper(nn.Module):
 
     def _get_projector(self, hidden):
         _, dim = hidden.shape
-        if self.mlp == "MLP":
-            create_mlp_fn = MLP
-        elif self.mlp == "SimsiamMLP":
-            create_mlp_fn = SimSiamMLP
-        elif self.mlp == "NoBnMLP":
-            create_mlp_fn = NoBnMLP
+        if self.disable_projector:
+            if self.mlp == "MLP":
+                create_mlp_fn = MLP
+            elif self.mlp == "SimsiamMLP":
+                create_mlp_fn = SimSiamMLP
+            elif self.mlp == "NoBnMLP":
+                create_mlp_fn = NoBnMLP
+            else:
+                raise NotImplementedError()
+            projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size)
         else:
-            raise NotImplementedError()
-        projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size)
+            projector = nn.Identity()
         return projector.to(hidden)
 
     def get_representation(self, x):
@@ -197,7 +200,7 @@ class BYOL(nn.Module):
         self.disable_projector = disable_projector
         # Augmentation is finished outside
 
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation, disable_projector=self.disable_projector)
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)

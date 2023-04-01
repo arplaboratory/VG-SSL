@@ -61,7 +61,7 @@ class VICREG(nn.Module):
         lambd = 0.0051,
         mlp = "8192-8192-8192",
         aggregation = None,
-        disable_projector = disable_projector
+        disable_projector = False
     ):
         super().__init__()
         self.net = net
@@ -120,7 +120,10 @@ class VICREG(nn.Module):
         y = self.aggregation(y)
 
         if self.projector is None:
-            self.projector = self._get_projector(x)
+            if not self.disable_projector:
+                self.projector = self._get_projector(x)
+            else:
+                self.projector = nn.Identity()
             if self.use_bt_loss:
                 self.bn = self._get_bn(x)
             return
