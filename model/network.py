@@ -351,15 +351,25 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         super().__init__()
         self.args = args
         self.backbone = get_backbone(args)
+        # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
+        if args.disable_projector:
+            if args.ssl_method == "byol" or args.ssl_method == "simsiam":
+                args.features_dim = int(256 / args.netvlad_clusters)
+            elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+                args.features_dim = int(8192 / args.netvlad_clusters)
+            elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+                args.features_dim = int(128 / args.netvlad_clusters)
+            else:
+                raise NotImplementedError()
         self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone
         self.return_loss = False
+        self.disable_projector = args.disable_projector
         self.ssl_model = self.get_ssl_model()
         self.train_ds, self.val_ds, self.test_ds = ds_list
         self.all_features = None
         self.lr = 0
         self.batch_size = batch_size
-        self.disable_projector = args.disable_projector
 
     def get_ssl_model(self):
         if self.args.ssl_method == "byol":
@@ -370,7 +380,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        netvlad_clusters = self.args.netvlad_clusters)
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
@@ -380,7 +391,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
                         use_momentum=False,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        netvlad_clusters = self.args.netvlad_clusters)
         elif self.args.ssl_method == "vicreg":
             self.return_loss = True
             return VICREG(self.backbone,
@@ -388,7 +400,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        netvlad_clusters = self.args.netvlad_clusters)
         elif self.args.ssl_method == "bt":
             self.return_loss = True
             return VICREG(self.backbone,
@@ -397,7 +410,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        netvlad_clusters = self.args.netvlad_clusters)
         elif self.args.ssl_method == "mocov2":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -406,7 +420,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        netvlad_clusters = self.args.netvlad_clusters)
         elif self.args.ssl_method == "simclr":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -416,7 +431,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         aggregation = self.aggregation,
                         use_simclr = True,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        netvlad_clusters = self.args.netvlad_clusters)
         else:
             raise NotImplementedError()
 

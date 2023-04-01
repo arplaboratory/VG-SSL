@@ -61,7 +61,8 @@ class VICREG(nn.Module):
         lambd = 0.0051,
         mlp = "8192-8192-8192",
         aggregation = None,
-        disable_projector = False
+        disable_projector = False,
+        netvlad_clusters = -1
     ):
         super().__init__()
         self.net = net
@@ -69,6 +70,11 @@ class VICREG(nn.Module):
         self.num_nodes = num_nodes
         self.num_devices = num_devices
         self.disable_projector = disable_projector
+        if netvlad_clusters == -1:
+            self.compression_dim = int(mlp.split('-')[0])
+        else:
+            self.compression_dim = int(int(mlp.split('-')[0]) / netvlad_clusters)
+        self.conv_layer = None
         # Augmentation is finished outside
 
         self.use_bt_loss = use_bt_loss
@@ -99,6 +105,15 @@ class VICREG(nn.Module):
     def _get_bn(self, hidden):
         bn = nn.BatchNorm1d(self.num_features, affine=False)
         return bn.to(hidden)
+    
+    def _get_conv_layer(self, representation_before_agg):
+        if self.compression_dim == -1 or not self.disable_projector:
+            conv_layer = nn.Identity()
+        else:
+            _, dim, _, _ = representation_before_agg.shape
+            conv_layer = nn.Sequential(nn.Conv2d(dim, self.compression_dim, 1, bias=False),
+                                       nn.BatchNorm2d(self.compression_dim))
+        return conv_layer.to(representation_before_agg)
 
     def forward(
         self,
@@ -108,13 +123,19 @@ class VICREG(nn.Module):
         return_projection = True
     ):
         if return_embedding:
-            if self.return_projection:
-                return self.projector(self.aggregation(self.net(x)))
+            if return_projection:
+                return self.projector(self.aggregation(self.conv_layer(self.net(x))))
             else:
-                return self.aggregation(self.net(x))
+                return self.aggregation(self.conv_layer(self.net(x)))
 
         x = self.net(x)
         y = self.net(y)
+
+        if self.conv_layer is None:
+            self.conv_layer = self._get_conv_layer(x)
+
+        x = self.conv_layer(x)
+        y = self.conv_layer(y)
 
         x = self.aggregation(x)
         y = self.aggregation(y)
