@@ -10,6 +10,19 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--matching",
+        type=str,
+        default="l2",
+        choices=["l2", "cos"]
+        help="Matching based on Euclidian (l2) distance or cosine similarity"
+    )
+    parser.add_argument(
+        "--wd",
+        type=float,
+        default=1e-6,
+        help="Weight decay"
+    )
+    parser.add_argument(
         "--disable_projector",
         action="store_true",
         help="Choose if we disable projector for ssl training"
@@ -355,5 +368,9 @@ def parse_arguments():
 
     if args.disable_projector and args.ssl_method == "none":
         raise ValueError("Disabling projectors must be with ssl training")
+
+    if args.matching == "cos" and args.ssl_method == "triplet":
+        raise NotImplementedError("Cosine distance is not implemented for triplet training")
+
     return args
     

@@ -310,27 +310,27 @@ def setup_optimizer_loss(args, model_parameters, return_loss=True):
     else:
         if args.optim == "adam":
             if args.cosine_scheduler:
-                optimizer = torch.optim.Adam(model_parameters, lr=0)
+                optimizer = torch.optim.Adam(model_parameters, lr=0, weight_decay=args.wd)
             else:
-                optimizer = torch.optim.Adam(model_parameters, lr=args.lr)
+                optimizer = torch.optim.Adam(model_parameters, lr=args.lr, weight_decay=args.wd)
         elif args.optim == "sgd":
             if args.cosine_scheduler:
                 optimizer = torch.optim.SGD(
-                    model_parameters, lr=0, momentum=0.9, weight_decay=1e-6
+                    model_parameters, lr=0, momentum=0.9, weight_decay=args.wd
                 )
             else:
                 optimizer = torch.optim.SGD(
-                    model_parameters, lr=args.lr, momentum=0.9, weight_decay=1e-6
+                    model_parameters, lr=args.lr, momentum=0.9, weight_decay=args.wd
                 )
         elif args.optim == "lars":
             if args.cosine_scheduler:
                 optimizer = LARS(
-                    model_parameters, lr=0, weight_decay=1e-6, weight_decay_filter=exclude_bias_and_norm,
+                    model_parameters, lr=0, weight_decay=args.wd, weight_decay_filter=exclude_bias_and_norm,
                     lars_adaptation_filter=exclude_bias_and_norm
                     )
             else:
                 optimizer = LARS(
-                    model_parameters, lr=args.lr, weight_decay=1e-6, weight_decay_filter=exclude_bias_and_norm,
+                    model_parameters, lr=args.lr, weight_decay=args.wd, weight_decay_filter=exclude_bias_and_norm,
                     lars_adaptation_filter=exclude_bias_and_norm
                 )
     # Setup Loss
@@ -475,6 +475,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 num_workers=self.args.num_workers,
                 batch_size=self.batch_size,
                 collate_fn=datasets_ws.collate_fn,
+                pin_memory=(self.args.device == "cuda"),
                 drop_last=True
             )
             return pairs_dl
