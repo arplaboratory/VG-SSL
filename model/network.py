@@ -538,8 +538,14 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def _shared_on_eval_epoch_end(self, eval_ds, args):
         queries_features = self.all_features[eval_ds.database_num:]
         database_features = self.all_features[: eval_ds.database_num]
+        if args.matching == "cos":
+            queries_features = torch.norm(queries_features, dim=1)
+            database_features = torch.norm(database_features, dim=1)
 
-        faiss_index = faiss.IndexFlatL2(args.features_dim)
+        if args.matching == "l2":
+            faiss_index = faiss.IndexFlatL2(args.features_dim)
+        elif args.matching == "cos":
+            faiss_index = faiss.IndexFlatIP(args.features_dim)
         faiss_index.add(database_features)
         del database_features, self.all_features
         self.all_features = None
