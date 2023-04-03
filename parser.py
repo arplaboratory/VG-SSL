@@ -148,11 +148,6 @@ def parse_arguments():
         ],
         help="_",
     )
-
-
-  
-
-
     parser.add_argument(
         "--l2",
         type=str,
