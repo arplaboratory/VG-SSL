@@ -13,7 +13,7 @@ def parse_arguments():
         "--matching",
         type=str,
         default="l2",
-        choices=["l2", "cos"]
+        choices=["l2", "cos"],
         help="Matching based on Euclidian (l2) distance or cosine similarity"
     )
     parser.add_argument(
