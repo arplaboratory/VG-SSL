@@ -10,6 +10,11 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--disable_projector",
+        action="store_true",
+        help="Choose if we disable projector for ssl training"
+    )
+    parser.add_argument(
         "--cosine_scheduler",
         action="store_true",
         help="Choose if we use cosine scheduler"
@@ -348,5 +353,7 @@ def parse_arguments():
     if args.pca_dim != None and args.pca_dataset_folder == None:
         raise ValueError("Please specify --pca_dataset_folder when using pca")
 
+    if args.disable_projector and args.ssl_method == "none":
+        raise ValueError("Disabling projectors must be with ssl training")
     return args
     

@@ -5,7 +5,6 @@ from functools import wraps
 import torch
 from torch import nn
 import torch.nn.functional as F
-
 from torchvision import transforms as T
 
 # helper functions
@@ -92,7 +91,7 @@ def SimSiamMLP(dim, projection_size, hidden_size=4096):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None):
+    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, disable_projector = False, compression_dim = -1):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
@@ -101,6 +100,9 @@ class NetWrapper(nn.Module):
         self.projector = None
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
+        self.disable_projector = disable_projector
+        self.compression_dim = compression_dim
+        self.conv_layer = None
 
         if mlp in ["MLP", "SimsiamMLP", "NoBnMLP"]:
             self.mlp = mlp
@@ -131,23 +133,34 @@ class NetWrapper(nn.Module):
 
     def _get_projector(self, hidden):
         _, dim = hidden.shape
-        if self.mlp == "MLP":
-            create_mlp_fn = MLP
-        elif self.mlp == "SimsiamMLP":
-            create_mlp_fn = SimSiamMLP
-        elif self.mlp == "NoBnMLP":
-            create_mlp_fn = NoBnMLP
+        if not self.disable_projector:
+            if self.mlp == "MLP":
+                create_mlp_fn = MLP
+            elif self.mlp == "SimsiamMLP":
+                create_mlp_fn = SimSiamMLP
+            elif self.mlp == "NoBnMLP":
+                create_mlp_fn = NoBnMLP
+            else:
+                raise NotImplementedError()
+            projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size)
         else:
-            raise NotImplementedError()
-        projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size)
+            projector = nn.Identity()
         return projector.to(hidden)
 
     def get_representation(self, x):
         if self.layer == -1:
             if self.aggregation is not None:
-                return self.aggregation(self.net(x))
+                if self.conv_layer is None:
+                    if self.compression_dim == -1 or not self.disable_projector:
+                        self.conv_layer = nn.Identity()
+                    else:
+                        representation_before_agg = self.net(x)
+                        _, dim, _, _ = representation_before_agg.shape
+                        self.conv_layer = nn.Sequential(nn.Conv2d(dim, self.compression_dim, 1, bias=False),
+                                                        nn.BatchNorm2d(self.compression_dim))
+                return self.aggregation(self.conv_layer(self.net(x)))
             else:
-                return self.net(x)
+                return self.conv_layer(self.net(x))
 
         if not self.hook_registered:
             self._register_hook()
@@ -186,21 +199,31 @@ class BYOL(nn.Module):
         projection_hidden_size = 4096,
         moving_average_decay = 0.99,
         use_momentum = True,
-        aggregation = None
+        aggregation = None,
+        disable_projector = False,
+        netvlad_clusters = -1
     ):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
         self.num_nodes = num_nodes
         self.num_devices = num_devices
+        self.disable_projector = disable_projector
+        self.projection_size = projection_size
+        self.projection_hidden_size = projection_hidden_size
+        if netvlad_clusters == -1:
+            effective_compression_dim = projection_size
+        else:
+            effective_compression_dim = int(projection_size / netvlad_clusters)
         # Augmentation is finished outside
 
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation,
+                                         disable_projector=disable_projector, compression_dim = effective_compression_dim)
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
 
-        self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
+        self.online_predictor = None
 
         # get device of network and make wrapper same device
         self.device = get_module_device(self.net)
@@ -240,8 +263,16 @@ class BYOL(nn.Module):
         # image one and two are proceeded outsides
         image_one, image_two = x, y
 
-        online_proj_one, _ = self.online_encoder(image_one)
-        online_proj_two, _ = self.online_encoder(image_two)
+        if self.disable_projector:
+            online_proj_one = self.online_encoder(image_one, return_projection = False)
+            online_proj_two = self.online_encoder(image_two, return_projection = False)
+        else:
+            online_proj_one, _ = self.online_encoder(image_one, return_projection = True)
+            online_proj_two, _ = self.online_encoder(image_two, return_projection = True)
+
+        if self.online_predictor is None:
+            _, dim = online_proj_one.shape
+            self.online_predictor = MLP(dim, self.projection_size, self.projection_hidden_size)
 
         online_pred_one = self.online_predictor(online_proj_one)
         online_pred_two = self.online_predictor(online_proj_two)
@@ -251,8 +282,12 @@ class BYOL(nn.Module):
                 self.target_encoder = self._get_target_encoder()
             
             target_encoder =  self.target_encoder if self.use_momentum else self.online_encoder
-            target_proj_one, _ = target_encoder(image_one)
-            target_proj_two, _ = target_encoder(image_two)
+            if self.disable_projector:
+                target_proj_one = target_encoder(image_one, return_projection = False)
+                target_proj_two = target_encoder(image_two, return_projection = False)
+            else:
+                target_proj_one, _ = target_encoder(image_one, return_projection = True)
+                target_proj_two, _ = target_encoder(image_two, return_projection = True)
             target_proj_one.detach_()
             target_proj_two.detach_()
 
