@@ -303,6 +303,18 @@ def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
+def attach_compression_layer(args, backbone, image_size, compression_dim, device):
+    rand_x = torch.randn(2, 3, image_size[0], image_size[1])
+    representation_before_agg = backbone(rand_x)
+    _, dim, _, _ = representation_before_agg.shape
+    conv_layer = nn.Sequential(nn.Conv2d(dim, compression_dim, 1, bias=False),
+                                    nn.BatchNorm2d(compression_dim))
+    backbone = nn.Sequential(
+        backbone,
+        conv_layer
+    )
+    return backbone
+
 def setup_optimizer_loss(args, model_parameters, return_loss=True):
     # Setup Optimizer
     if args.aggregation == "crn":
@@ -349,8 +361,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     """
     def __init__(self, args, ds_list, batch_size = 2):
         super().__init__()
-        self.backbone = get_backbone(args)
-        # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
         if args.disable_projector:
             if args.ssl_method == "byol" or args.ssl_method == "simsiam":
                 args.features_dim = int(256 / args.netvlad_clusters)
@@ -360,6 +370,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 args.features_dim = int(128 / args.netvlad_clusters)
             else:
                 raise NotImplementedError()
+        self.backbone = get_backbone(args)
+        self.backbone = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
+        # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
         self.args = args
         self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone

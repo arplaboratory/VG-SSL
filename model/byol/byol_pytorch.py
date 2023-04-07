@@ -150,17 +150,9 @@ class NetWrapper(nn.Module):
     def get_representation(self, x):
         if self.layer == -1:
             if self.aggregation is not None:
-                if self.conv_layer is None:
-                    if self.compression_dim == -1 or not self.disable_projector:
-                        self.conv_layer = nn.Identity()
-                    else:
-                        representation_before_agg = self.net(x)
-                        _, dim, _, _ = representation_before_agg.shape
-                        self.conv_layer = nn.Sequential(nn.Conv2d(dim, self.compression_dim, 1, bias=False),
-                                                        nn.BatchNorm2d(self.compression_dim))
-                return self.aggregation(self.conv_layer(self.net(x)))
+                return self.aggregation(self.net(x))
             else:
-                return self.conv_layer(self.net(x))
+                return self.net(x)
 
         if not self.hook_registered:
             self._register_hook()

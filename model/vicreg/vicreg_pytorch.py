@@ -105,15 +105,6 @@ class VICREG(nn.Module):
     def _get_bn(self, hidden):
         bn = nn.BatchNorm1d(self.num_features, affine=False)
         return bn.to(hidden)
-    
-    def _get_conv_layer(self, representation_before_agg):
-        if self.compression_dim == -1 or not self.disable_projector:
-            conv_layer = nn.Identity()
-        else:
-            _, dim, _, _ = representation_before_agg.shape
-            conv_layer = nn.Sequential(nn.Conv2d(dim, self.compression_dim, 1, bias=False),
-                                       nn.BatchNorm2d(self.compression_dim))
-        return conv_layer.to(representation_before_agg)
 
     def forward(
         self,
@@ -130,12 +121,6 @@ class VICREG(nn.Module):
 
         x = self.net(x)
         y = self.net(y)
-
-        if self.conv_layer is None:
-            self.conv_layer = self._get_conv_layer(x)
-
-        x = self.conv_layer(x)
-        y = self.conv_layer(y)
 
         x = self.aggregation(x)
         y = self.aggregation(y)
