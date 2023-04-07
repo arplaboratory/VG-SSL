@@ -349,7 +349,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     """
     def __init__(self, args, ds_list, batch_size = 2):
         super().__init__()
-        self.args = args
         self.backbone = get_backbone(args)
         # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
         if args.disable_projector:
@@ -361,6 +360,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 args.features_dim = int(128 / args.netvlad_clusters)
             else:
                 raise NotImplementedError()
+        self.args = args
         self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone
         self.return_loss = False
@@ -467,9 +467,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if self.args.method == 'pair':
             # Compute pairs to use in the pair loss
             # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
-            self.train_ds.is_inference = True
-            self.train_ds.compute_pairs(self.args, None)
-            self.train_ds.is_inference = False
             pairs_dl = DataLoader(
                 dataset=self.train_ds,
                 num_workers=self.args.num_workers,
@@ -478,6 +475,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 pin_memory=(self.args.device == "cuda"),
                 drop_last=True
             )
+            self.train_ds.is_inference = True
+            self.train_ds.compute_pairs(self.args, None)
+            self.train_ds.is_inference = False
             return pairs_dl
         else:
             raise NotImplementedError()
@@ -625,6 +625,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if self.args.cosine_scheduler:
             self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step, self.batch_size, self.trainer.num_nodes, self.trainer.num_devices)
         self.update()
+
+    def on_train_epoch_start(self):
+        self.train_ds.is_inference = True
+        self.train_ds.compute_pairs(self.args, None)
+        self.train_ds.is_inference = False
 
     def setup(self, stage):
         if stage == "validate":

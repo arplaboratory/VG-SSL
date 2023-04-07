@@ -89,7 +89,6 @@ def main():
         devices = args.num_devices,
         max_epochs = args.epochs_num,
         sync_batchnorm = True,
-        reload_dataloaders_every_n_epochs = 1,
         logger = wandb_logger,
         callbacks = [checkpoint_callback, bar, lrmoniter],
         check_val_every_n_epoch = 10,
