@@ -308,7 +308,7 @@ def attach_compression_layer(args, backbone, image_size, compression_dim, device
     representation_before_agg = backbone(rand_x)
     _, dim, _, _ = representation_before_agg.shape
     conv_layer = nn.Sequential(nn.Conv2d(dim, compression_dim, 1, bias=False),
-                                    nn.BatchNorm2d(compression_dim))
+                               nn.BatchNorm2d(compression_dim))
     backbone = nn.Sequential(
         backbone,
         conv_layer
@@ -361,17 +361,16 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     """
     def __init__(self, args, ds_list, batch_size = 2):
         super().__init__()
-        if args.disable_projector:
-            if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                args.features_dim = int(256 / args.netvlad_clusters)
-            elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-                args.features_dim = int(8192 / args.netvlad_clusters)
-            elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                args.features_dim = int(128 / args.netvlad_clusters)
-            else:
-                raise NotImplementedError()
         self.backbone = get_backbone(args)
         if args.disable_projector:
+            if args.ssl_method == "byol" or args.ssl_method == "simsiam":
+                args.features_dim = 256
+            elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+                args.features_dim = 8192
+            elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+                args.features_dim = 128
+            else:
+                raise NotImplementedError()
             self.backbone = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
         # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
         self.args = args
@@ -393,6 +392,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector,
                         netvlad_clusters = self.args.netvlad_clusters)
@@ -403,6 +403,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         use_momentum=False,
                         disable_projector = self.disable_projector,
@@ -413,6 +414,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector,
                         netvlad_clusters = self.args.netvlad_clusters)
@@ -422,6 +424,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
                         disable_projector = self.disable_projector,
@@ -433,6 +436,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector,
                         netvlad_clusters = self.args.netvlad_clusters)
@@ -443,6 +447,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         use_simclr = True,
                         disable_projector = self.disable_projector,
