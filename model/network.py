@@ -371,7 +371,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             else:
                 raise NotImplementedError()
         self.backbone = get_backbone(args)
-        self.backbone = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
+        if args.disable_projector:
+            self.backbone = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
         # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
         self.args = args
         self.aggregation = get_aggregation(args)
