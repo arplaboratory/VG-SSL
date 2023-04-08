@@ -54,15 +54,16 @@ class VICREG(nn.Module):
         image_size,
         num_nodes,
         num_devices,
+        projection_size = 8192,
+        projection_hidden_size = 8192,
         use_bt_loss = False,
         sim_coeff = 25.0,
         std_coeff = 25.0,
         cov_coeff = 1.0,
         lambd = 0.0051,
-        mlp = "8192-8192-8192",
+        n_layers = "8192-8192-8192",
         aggregation = None,
         disable_projector = False,
-        netvlad_clusters = -1
     ):
         super().__init__()
         self.net = net
@@ -70,11 +71,6 @@ class VICREG(nn.Module):
         self.num_nodes = num_nodes
         self.num_devices = num_devices
         self.disable_projector = disable_projector
-        if netvlad_clusters == -1:
-            self.compression_dim = int(mlp.split('-')[0])
-        else:
-            self.compression_dim = int(int(mlp.split('-')[0]) / netvlad_clusters)
-        self.conv_layer = None
         # Augmentation is finished outside
 
         self.use_bt_loss = use_bt_loss
@@ -83,7 +79,10 @@ class VICREG(nn.Module):
         self.cov_coeff = cov_coeff
         self.lambd = lambd
         self.num_features = int(mlp.split("-")[-1])
-        self.mlp = mlp
+        self.mlp = ""
+        for i in range(n_layers-1):
+            self.mlp += str(projection_hidden_size) + "-"
+        self.mlp += str(projection_size)
 
         self.projector = None
         self.bn = None
@@ -115,9 +114,9 @@ class VICREG(nn.Module):
     ):
         if return_embedding:
             if return_projection:
-                return self.projector(self.aggregation(self.conv_layer(self.net(x))))
+                return self.projector(self.aggregation(self.net(x)))
             else:
-                return self.aggregation(self.conv_layer(self.net(x)))
+                return self.aggregation(self.net(x))
 
         x = self.net(x)
         y = self.net(y)

@@ -394,8 +394,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
@@ -406,8 +405,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         use_momentum=False,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "vicreg":
             self.return_loss = True
             return VICREG(self.backbone,
@@ -416,8 +414,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "bt":
             self.return_loss = True
             return VICREG(self.backbone,
@@ -427,8 +424,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "mocov2":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -438,8 +434,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simclr":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -450,8 +445,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.features_dim,
                         aggregation = self.aggregation,
                         use_simclr = True,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         else:
             raise NotImplementedError()
 
@@ -483,23 +477,20 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             raise NotImplementedError()
     
     def train_dataloader(self):
-        if self.args.method == 'pair':
-            # Compute pairs to use in the pair loss
-            # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
-            pairs_dl = DataLoader(
-                dataset=self.train_ds,
-                num_workers=self.args.num_workers,
-                batch_size=self.batch_size,
-                collate_fn=datasets_ws.collate_fn,
-                pin_memory=(self.args.device == "cuda"),
-                drop_last=True
-            )
-            self.train_ds.is_inference = True
-            self.train_ds.compute_pairs(self.args, None)
-            self.train_ds.is_inference = False
-            return pairs_dl
-        else:
-            raise NotImplementedError()
+        # Compute pairs to use in the pair loss
+        # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
+        pairs_dl = DataLoader(
+            dataset=self.train_ds,
+            num_workers=self.args.num_workers,
+            batch_size=self.batch_size,
+            collate_fn=datasets_ws.collate_fn,
+            pin_memory=(self.args.device == "cuda"),
+            drop_last=True
+        )
+        self.train_ds.is_inference = True
+        self.train_ds.compute_pairs(self.args, None)
+        self.train_ds.is_inference = False
+        return pairs_dl
 
     def val_dataloader(self):
         val_dataloader = DataLoader(
