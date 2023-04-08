@@ -9,6 +9,7 @@ import torch.distributed as dist
 
 from torchvision import transforms as T
 from model.byol.byol_pytorch import get_module_device
+import logging
 
 class FullGatherLayer(torch.autograd.Function):
     """
@@ -61,7 +62,7 @@ class VICREG(nn.Module):
         std_coeff = 25.0,
         cov_coeff = 1.0,
         lambd = 0.0051,
-        n_layers = "8192-8192-8192",
+        n_layers = 3,
         aggregation = None,
         disable_projector = False,
     ):
@@ -78,12 +79,12 @@ class VICREG(nn.Module):
         self.std_coeff = std_coeff
         self.cov_coeff = cov_coeff
         self.lambd = lambd
-        self.num_features = int(mlp.split("-")[-1])
         self.mlp = ""
         for i in range(n_layers-1):
             self.mlp += str(projection_hidden_size) + "-"
         self.mlp += str(projection_size)
-
+        self.num_features = int(self.mlp.split("-")[-1])
+        
         self.projector = None
         self.bn = None
 

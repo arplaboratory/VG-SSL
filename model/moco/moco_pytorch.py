@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from model.byol.byol_pytorch import NetWrapper, EMA, get_module_device, set_requires_grad, update_moving_average
 from model.vicreg.vicreg_pytorch import FullGatherLayer
+import logging
 import copy
 
 # utils

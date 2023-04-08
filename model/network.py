@@ -303,17 +303,18 @@ def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
-def attach_compression_layer(args, backbone, image_size, compression_dim, device):
+def attach_compression_layer(args, backbone, image_size, projection_size, device):
     rand_x = torch.randn(2, 3, image_size[0], image_size[1])
     representation_before_agg = backbone(rand_x)
     _, dim, _, _ = representation_before_agg.shape
-    conv_layer = nn.Sequential(nn.Conv2d(dim, compression_dim, 1, bias=False),
-                               nn.BatchNorm2d(compression_dim))
+    effective_projection_size = int(projection_size / args.netvlad_clusters)
+    conv_layer = nn.Sequential(nn.Conv2d(dim, effective_projection_size, 1, bias=False),
+                               nn.BatchNorm2d(effective_projection_size))
     backbone = nn.Sequential(
         backbone,
         conv_layer
     )
-    return backbone
+    return backbone, effective_projection_size
 
 def setup_optimizer_loss(args, model_parameters, return_loss=True):
     # Setup Optimizer
@@ -364,14 +365,14 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.backbone = get_backbone(args)
         if args.disable_projector:
             if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                args.features_dim = 256
+                args.features_dim = 2048
             elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
                 args.features_dim = 8192
             elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                args.features_dim = 128
+                args.features_dim = 2048
             else:
                 raise NotImplementedError()
-            self.backbone = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
+            self.backbone, args.features_dim = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
         # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
         self.args = args
         self.aggregation = get_aggregation(args)

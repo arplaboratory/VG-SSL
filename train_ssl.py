@@ -96,7 +96,7 @@ def main():
     )
     if trainer.global_rank == 0:
         wandb_logger.experiment.config.update(vars(args))
-    trainer.validate(model)
+    # trainer.validate(model)
     trainer.fit(model)
 
 if __name__ == "__main__":
