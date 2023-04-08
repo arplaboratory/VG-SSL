@@ -314,7 +314,7 @@ def attach_compression_layer(args, backbone, image_size, projection_size, device
         backbone,
         conv_layer
     )
-    return backbone, effective_projection_size
+    return backbone, effective_projection_size, projection_size
 
 def setup_optimizer_loss(args, model_parameters, return_loss=True):
     # Setup Optimizer
@@ -372,8 +372,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 args.features_dim = 2048
             else:
                 raise NotImplementedError()
-            self.backbone, args.features_dim = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
-        # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
+            self.backbone, args.features_dim, self.projection_size = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
         self.args = args
         self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone
@@ -393,7 +392,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.args.features_dim,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simsiam":
@@ -403,7 +402,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.args.features_dim,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         use_momentum=False,
                         disable_projector = self.disable_projector)
@@ -413,7 +412,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.args.features_dim,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector)
         elif self.args.ssl_method == "bt":
@@ -422,7 +421,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.args.features_dim,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
                         disable_projector = self.disable_projector)
@@ -433,7 +432,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.args.features_dim,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simclr":
@@ -443,7 +442,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.args.features_dim,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         use_simclr = True,
                         disable_projector = self.disable_projector)
