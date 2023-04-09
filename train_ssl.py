@@ -65,8 +65,12 @@ def main():
         args.num_nodes = int(os.environ["SLURM_JOB_NUM_NODES"])
         args.num_devices = int(os.environ["SLURM_NTASKS_PER_NODE"])
     except:
-        args.num_nodes = 1
-        args.num_devices = torch.cuda.device_count()
+        if args.visualize_input:
+            args.num_nodes = 1
+            args.num_devices = 1
+        else:
+            args.num_nodes = 1
+            args.num_devices = torch.cuda.device_count()
 
     # Initialize model
     model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds], args.train_batch_size)
@@ -89,7 +93,6 @@ def main():
         devices = args.num_devices,
         max_epochs = args.epochs_num,
         sync_batchnorm = True,
-        reload_dataloaders_every_n_epochs = 1,
         logger = wandb_logger,
         callbacks = [checkpoint_callback, bar, lrmoniter],
         check_val_every_n_epoch = 10,

@@ -9,6 +9,7 @@ import torch.distributed as dist
 
 from torchvision import transforms as T
 from model.byol.byol_pytorch import get_module_device
+import logging
 
 class FullGatherLayer(torch.autograd.Function):
     """
@@ -55,15 +56,16 @@ class VICREG(nn.Module):
         num_nodes,
         num_devices,
         skip_proj = False,
+        projection_size = 8192,
+        projection_hidden_size = 8192,
         use_bt_loss = False,
         sim_coeff = 25.0,
         std_coeff = 25.0,
         cov_coeff = 1.0,
         lambd = 0.0051,
-        mlp = "8192-8192-8192",
+        n_layers = 3,
         aggregation = None,
         disable_projector = False,
-        netvlad_clusters = -1
     ):
         super().__init__()
         self.net = net
@@ -71,11 +73,6 @@ class VICREG(nn.Module):
         self.num_nodes = num_nodes
         self.num_devices = num_devices
         self.disable_projector = disable_projector
-        if netvlad_clusters == -1:
-            self.compression_dim = int(mlp.split('-')[0])
-        else:
-            self.compression_dim = int(int(mlp.split('-')[0]) / netvlad_clusters)
-        self.conv_layer = None
         # Augmentation is finished outside
 
         self.use_bt_loss = use_bt_loss
@@ -103,19 +100,6 @@ class VICREG(nn.Module):
         projector = create_projector(dim, self.mlp)
         return projector.to(hidden)
 
-    def _get_bn(self, hidden):
-        bn = nn.BatchNorm1d(self.num_features, affine=False)
-        return bn.to(hidden)
-    
-    def _get_conv_layer(self, representation_before_agg):
-        if self.compression_dim == -1 or not self.disable_projector:
-            conv_layer = nn.Identity()
-        else:
-            _, dim, _, _ = representation_before_agg.shape
-            conv_layer = nn.Sequential(nn.Conv2d(dim, self.compression_dim, 1, bias=False),
-                                       nn.BatchNorm2d(self.compression_dim))
-        return conv_layer.to(representation_before_agg)
-
     def forward(
         self,
         x,
@@ -125,18 +109,12 @@ class VICREG(nn.Module):
     ):
         if return_embedding:
             if return_projection:
-                return self.projector(self.aggregation(self.conv_layer(self.net(x))))
+                return self.projector(self.aggregation(self.net(x)))
             else:
-                return self.aggregation(self.conv_layer(self.net(x)))
+                return self.aggregation(self.net(x))
 
         x = self.net(x)
         y = self.net(y)
-
-        if self.conv_layer is None:
-            self.conv_layer = self._get_conv_layer(x)
-
-        x = self.conv_layer(x)
-        y = self.conv_layer(y)
 
         x = self.aggregation(x)
         y = self.aggregation(y)
@@ -146,8 +124,6 @@ class VICREG(nn.Module):
                 self.projector = self._get_projector(x)
             else:
                 self.projector = nn.Identity()
-            if self.use_bt_loss:
-                self.bn = self._get_bn(x)
             return
 
         if not self.disable_projector:
@@ -183,14 +159,20 @@ class VICREG(nn.Module):
         else:
             # Use Barlow twins loss
             # empirical cross-correlation matrix
-            c = self.bn(x).T @ self.bn(y)
+            if not (self.num_devices==1 and self.num_nodes==1):
+                x = torch.cat(FullGatherLayer.apply(x), dim=0)
+                y = torch.cat(FullGatherLayer.apply(y), dim=0)
+            x = x - x.mean(dim=0)
+            y = y - y.mean(dim=0)
+            std_x = torch.sqrt(x.var(dim=0) + 0.0001)
+            std_y = torch.sqrt(y.var(dim=0) + 0.0001)
+            x = x / std_x
+            y = y / std_y
+            c = x.T @ y
 
             # sum the cross-correlation matrix between all gpus
-            batch_size = x.shape[0] * self.num_nodes * self.num_devices # Since not gathered, batch size is local and we need to make it global
+            batch_size = x.shape[0] # Since gathered, batch size is global
             c.div_(batch_size)
-
-            if not (self.num_devices==1 and self.num_nodes==1):
-                torch.distributed.all_reduce(c)
 
             on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
             off_diag = off_diagonal(c).pow_(2).sum()

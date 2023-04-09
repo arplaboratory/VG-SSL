@@ -22,6 +22,7 @@ from model.vicreg.utils import adjust_learning_rate, LARS, exclude_bias_and_norm
 import datasets_ws
 import pytorch_lightning as pl
 from torch.utils.data.dataloader import DataLoader
+from datasets_ws import inv_base_transforms
 import numpy as np
 import faiss
 
@@ -303,6 +304,27 @@ def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
+def attach_compression_layer(args, backbone, image_size, projection_size, device):
+    rand_x = torch.randn(2, 3, image_size[0], image_size[1])
+    representation_before_agg = backbone(rand_x)
+    _, dim, _, _ = representation_before_agg.shape
+    effective_projection_size = int(projection_size / args.netvlad_clusters)
+    conv_layer = nn.Sequential(nn.Conv2d(dim, effective_projection_size, 1, bias=False if not args.disable_bn else True),
+                               nn.BatchNorm2d(effective_projection_size) if not args.disable_bn else nn.Identity())
+    backbone = nn.Sequential(
+        backbone,
+        conv_layer
+    )
+    return backbone, effective_projection_size, projection_size
+
+def visualize(image_tensor, name):
+    if not os.path.isdir("vis"):
+        os.mkdir("vis")
+    for i in range(len(image_tensor)):
+        img = image_tensor[i]
+        img = inv_base_transforms(img)
+        img.save(f"vis/{name}_{i}.png")
+
 def setup_optimizer_loss(args, model_parameters, return_loss=True):
     # Setup Optimizer
     if args.aggregation == "crn":
@@ -349,18 +371,18 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     """
     def __init__(self, args, ds_list, batch_size = 2):
         super().__init__()
-        self.args = args
         self.backbone = get_backbone(args)
-        # Default project hidden size divided by netvlad cluster num. Need to change when projection hidden size is changed!
         if args.disable_projector:
             if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                args.features_dim = int(256 / args.netvlad_clusters)
+                args.features_dim = 2048
             elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-                args.features_dim = int(8192 / args.netvlad_clusters)
+                args.features_dim = 8192
             elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                args.features_dim = int(128 / args.netvlad_clusters)
+                args.features_dim = 2048
             else:
                 raise NotImplementedError()
+            self.backbone, args.features_dim, self.projection_size = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
+        self.args = args
         self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone
         self.return_loss = False
@@ -379,9 +401,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
@@ -389,29 +411,29 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         use_momentum=False,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "vicreg":
             self.return_loss = True
             return VICREG(self.backbone,
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "bt":
             self.return_loss = True
             return VICREG(self.backbone,
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "mocov2":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -419,9 +441,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simclr":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -429,10 +451,10 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
+                        projection_size = self.projection_size,
                         aggregation = self.aggregation,
                         use_simclr = True,
-                        disable_projector = self.disable_projector,
-                        netvlad_clusters = self.args.netvlad_clusters)
+                        disable_projector = self.disable_projector)
         else:
             raise NotImplementedError()
 
@@ -449,6 +471,10 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):2].long()
         input_x = x[x_indexes]
         input_y = x[y_indexes]
+        if self.args.visualize_input:
+            visualize(input_x, "query")
+            visualize(input_y, "positive")
+            raise KeyError("Only visualize first batch. Comment this if you want more.")
         if self.return_loss:
             loss = self.ssl_model(input_x, input_y).mean()
             return loss
@@ -464,23 +490,20 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             raise NotImplementedError()
     
     def train_dataloader(self):
-        if self.args.method == 'pair':
-            # Compute pairs to use in the pair loss
-            # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
-            self.train_ds.is_inference = True
-            self.train_ds.compute_pairs(self.args, None)
-            self.train_ds.is_inference = False
-            pairs_dl = DataLoader(
-                dataset=self.train_ds,
-                num_workers=self.args.num_workers,
-                batch_size=self.batch_size,
-                collate_fn=datasets_ws.collate_fn,
-                pin_memory=(self.args.device == "cuda"),
-                drop_last=True
-            )
-            return pairs_dl
-        else:
-            raise NotImplementedError()
+        # Compute pairs to use in the pair loss
+        # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
+        pairs_dl = DataLoader(
+            dataset=self.train_ds,
+            num_workers=self.args.num_workers,
+            batch_size=self.batch_size,
+            collate_fn=datasets_ws.collate_fn,
+            pin_memory=(self.args.device == "cuda"),
+            drop_last=True
+        )
+        self.train_ds.is_inference = True
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
+        self.train_ds.is_inference = False
+        return pairs_dl
 
     def val_dataloader(self):
         val_dataloader = DataLoader(
@@ -542,6 +565,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             queries_features = F.normalize(queries_features, dim=1)
             database_features = F.normalize(database_features, dim=1)
 
+        # cos is equivalent to l2 if the vector is normalized
         if args.matching == "l2":
             faiss_index = faiss.IndexFlatL2(args.features_dim)
         elif args.matching == "cos":
@@ -625,6 +649,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if self.args.cosine_scheduler:
             self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step, self.batch_size, self.trainer.num_nodes, self.trainer.num_devices)
         self.update()
+
+    def on_train_epoch_start(self):
+        self.train_ds.is_inference = True
+        self.train_ds.compute_pairs(self.args, None)
+        self.train_ds.is_inference = False
 
     def setup(self, stage):
         if stage == "validate":

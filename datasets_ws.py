@@ -41,15 +41,22 @@ class Solarization(object):
         else:
             return img
 
-
+imagenet_mean = [0.485, 0.456, 0.406]
+imagenet_std = [0.229, 0.224, 0.225]
 base_transform = transforms.Compose(
     [
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
-                             0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
     ]
 )
 
+inv_base_transforms = transforms.Compose(
+    [ 
+        transforms.Normalize(mean = [ -m/s for m, s in zip(imagenet_mean, imagenet_std)],
+                             std = [ 1/s for s in imagenet_std]),
+        transforms.ToPILImage()
+    ]
+)
 
 def path_to_pil_img(path):
     return Image.open(path).convert("RGB")
@@ -941,10 +948,60 @@ class PairsDataset(BaseDataset):
         else:
             raise NotImplementedError()
 
-    def get_best_positive_index(self, args, query_index, cache, query_features):
-        best_positive_index = random.choice(self.hard_positives_per_query[query_index]).item()
-        return best_positive_index
+    @staticmethod
+    def compute_cache(args, model, subset_ds, cache_shape):
+        """Compute the cache containing features of images, which is used to
+        find best positive and hardest negatives."""
+        subset_dl = DataLoader(
+            dataset=subset_ds,
+            num_workers=args.num_workers,
+            batch_size=args.infer_batch_size,
+            shuffle=False,
+            pin_memory=(args.device == "cuda"),
+        )
+        model.eval()
 
+        # RAMEfficient2DMatrix can be replaced by np.zeros, but using
+        # RAMEfficient2DMatrix is RAM efficient for full database mining.
+        if args.use_faiss_gpu:
+            cache = RAMEfficient2DMatrixGPU(cache_shape, dtype=torch.float32, device=args.device)
+        else:
+            cache = RAMEfficient2DMatrix(cache_shape, dtype=np.float32)
+        
+        with torch.no_grad():
+            for images, indexes in tqdm(subset_dl, ncols=100):
+                images = images.to(args.device)
+                features = model(images, None, return_embedding=True, return_projection=False)
+                if args.use_faiss_gpu:
+                    cache[indexes] = features
+                else:
+                    cache[indexes.numpy()] = features.cpu().numpy()
+        return cache
+
+    def get_query_features(self, query_index, cache):
+        query_features = cache[query_index + self.database_num]
+        if query_features is None:
+            raise RuntimeError(
+                f"For query {self.queries_paths[query_index]} "
+                + f"with index {query_index} features have not been computed!\n"
+                + "There might be some bug with caching"
+            )
+        return query_features
+        
+    def get_best_positive_index(self, args, query_index, cache, query_features):
+        if cache is None:
+            best_positive_index = random.choice(self.hard_positives_per_query[query_index]).item()
+        else:
+            positives_features = cache[self.hard_positives_per_query[query_index]]
+            faiss_index = faiss.IndexFlatL2(args.features_dim)
+            faiss_index.add(positives_features)
+            # Search the best positive (within 10 meters AND nearest in features space)
+            _, best_positive_num = faiss_index.search(
+                query_features.reshape(1, -1), 1)
+            best_positive_index = self.hard_positives_per_query[query_index][best_positive_num[0]].item(
+            )
+        return best_positive_index
+        
     def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
@@ -960,11 +1017,27 @@ class PairsDataset(BaseDataset):
         ]  # Flatten list of lists to a list
         positives_indexes = list(np.unique(positives_indexes))
 
+        # Compute the cache only for queries and their positives, in order to find the best positive
+        subset_ds = Subset(
+            self, positives_indexes +
+            list(sampled_queries_indexes + self.database_num)
+        )
+        if model is not None:
+            cache = self.compute_cache(
+                args, model, subset_ds, (len(self), args.features_dim)
+            )
+
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
-            best_positive_index = self.get_best_positive_index(
-                args, query_index, None, None
-            )
+            if model is not None:
+                query_features = self.get_query_features(query_index, cache)
+                best_positive_index = self.get_best_positive_index(
+                args, query_index, cache, query_features
+                )
+            else:
+                best_positive_index = self.get_best_positive_index(
+                    args, query_index, None, None
+                )
             self.pairs_global_indexes.append(
                 (query_index, best_positive_index)
             )

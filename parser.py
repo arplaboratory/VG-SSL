@@ -10,6 +10,21 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--use_best_positive",
+        action="store_true",
+        help="Use best positive in feature space"
+    )
+    parser.add_argument(
+        "--visualize_input",
+        action="store_true",
+        help="Visualize input for SSL learning"
+    )
+    parser.add_argument(
+        "--disable_bn",
+        action="store_true",
+        help="Disable bn in compression layer"
+    )
+    parser.add_argument(
         "--matching",
         type=str,
         default="l2",

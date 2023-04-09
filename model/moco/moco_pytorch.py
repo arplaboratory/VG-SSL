@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from model.byol.byol_pytorch import NetWrapper, EMA, get_module_device, set_requires_grad, update_moving_average
 from model.vicreg.vicreg_pytorch import FullGatherLayer
+import logging
 import copy
 
 # utils
@@ -72,8 +73,7 @@ class MOCO(nn.Module):
                  shuffle_bn=False,
                  use_simclr=False,
                  aggregation=None,
-                 disable_projector=False,
-                 netvlad_clusters=-1):
+                 disable_projector=False):
         """
         dim: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
@@ -89,10 +89,6 @@ class MOCO(nn.Module):
         self.disable_projector = disable_projector
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
-        if netvlad_clusters == -1:
-            effective_compression_dim = projection_size
-        else:
-            effective_compression_dim = int(projection_size / netvlad_clusters)
         # Augmentation is finished outside
 
         self.K = K
@@ -103,7 +99,7 @@ class MOCO(nn.Module):
         # create the encoders
         # num_classes is the output fc dimension
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="NoBnMLP", aggregation=self.aggregation,
-                                         disable_projector=disable_projector, compression_dim=effective_compression_dim)
+                                         disable_projector=disable_projector)
         self.use_momentum = True
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
@@ -113,9 +109,10 @@ class MOCO(nn.Module):
         self.to(self.device)
 
         # create the queue
-        self.register_buffer("queue", torch.randn(projection_size, K))
-        self.queue = nn.functional.normalize(self.queue, dim=0)
-        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+        if not self.use_simclr:
+            self.register_buffer("queue", torch.randn(projection_size, K))
+            self.queue = nn.functional.normalize(self.queue, dim=0)
+            self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
         # send a mock image tensor to instantiate singleton parameters
         self.eval()

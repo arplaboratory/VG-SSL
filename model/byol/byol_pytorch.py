@@ -6,6 +6,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torchvision import transforms as T
+import logging
 
 # helper functions
 
@@ -91,7 +92,7 @@ def SimSiamMLP(dim, projection_size, hidden_size=4096):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, disable_projector = False, compression_dim = -1):
+    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, disable_projector = False):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
@@ -101,8 +102,6 @@ class NetWrapper(nn.Module):
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
         self.disable_projector = disable_projector
-        self.compression_dim = compression_dim
-        self.conv_layer = None
 
         if mlp in ["MLP", "SimsiamMLP", "NoBnMLP"]:
             self.mlp = mlp
@@ -150,17 +149,9 @@ class NetWrapper(nn.Module):
     def get_representation(self, x):
         if self.layer == -1:
             if self.aggregation is not None:
-                if self.conv_layer is None:
-                    if self.compression_dim == -1 or not self.disable_projector:
-                        self.conv_layer = nn.Identity()
-                    else:
-                        representation_before_agg = self.net(x)
-                        _, dim, _, _ = representation_before_agg.shape
-                        self.conv_layer = nn.Sequential(nn.Conv2d(dim, self.compression_dim, 1, bias=False),
-                                                        nn.BatchNorm2d(self.compression_dim))
-                return self.aggregation(self.conv_layer(self.net(x)))
+                return self.aggregation(self.net(x))
             else:
-                return self.conv_layer(self.net(x))
+                return self.net(x)
 
         if not self.hook_registered:
             self._register_hook()
@@ -201,7 +192,6 @@ class BYOL(nn.Module):
         use_momentum = True,
         aggregation = None,
         disable_projector = False,
-        netvlad_clusters = -1
     ):
         super().__init__()
         self.net = net
@@ -211,14 +201,10 @@ class BYOL(nn.Module):
         self.disable_projector = disable_projector
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
-        if netvlad_clusters == -1:
-            effective_compression_dim = projection_size
-        else:
-            effective_compression_dim = int(projection_size / netvlad_clusters)
         # Augmentation is finished outside
 
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation,
-                                         disable_projector=disable_projector, compression_dim = effective_compression_dim)
+                                         disable_projector=disable_projector)
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
