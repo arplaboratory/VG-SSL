@@ -309,7 +309,7 @@ def attach_compression_layer(args, backbone, image_size, projection_size, device
     _, dim, _, _ = representation_before_agg.shape
     effective_projection_size = int(projection_size / args.netvlad_clusters)
     conv_layer = nn.Sequential(nn.Conv2d(dim, effective_projection_size, 1, bias=False),
-                               nn.BatchNorm2d(effective_projection_size))
+                               nn.BatchNorm2d(effective_projection_size) if not args.disable_bn else nn.Identity())
     backbone = nn.Sequential(
         backbone,
         conv_layer
@@ -552,6 +552,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             queries_features = F.normalize(queries_features, dim=1)
             database_features = F.normalize(database_features, dim=1)
 
+        # cos is equivalent to l2 if the vector is normalized
         if args.matching == "l2":
             faiss_index = faiss.IndexFlatL2(args.features_dim)
         elif args.matching == "cos":

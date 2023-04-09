@@ -10,6 +10,11 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--disable_bn",
+        action="store_true",
+        help="Disable bn in compression layer"
+    )
+    parser.add_argument(
         "--matching",
         type=str,
         default="l2",
