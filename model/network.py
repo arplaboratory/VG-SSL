@@ -22,6 +22,7 @@ from model.vicreg.utils import adjust_learning_rate, LARS, exclude_bias_and_norm
 import datasets_ws
 import pytorch_lightning as pl
 from torch.utils.data.dataloader import DataLoader
+from datasets_ws import inv_base_transforms
 import numpy as np
 import faiss
 
@@ -316,6 +317,14 @@ def attach_compression_layer(args, backbone, image_size, projection_size, device
     )
     return backbone, effective_projection_size, projection_size
 
+def visualize(image_tensor, name):
+    if not os.path.isdir("vis"):
+        os.mkdir("vis")
+    for i in range(len(image_tensor)):
+        img = image_tensor[i]
+        img = inv_base_transforms(img)
+        img.save(f"vis/{name}_{i}.png")
+
 def setup_optimizer_loss(args, model_parameters, return_loss=True):
     # Setup Optimizer
     if args.aggregation == "crn":
@@ -462,6 +471,10 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):2].long()
         input_x = x[x_indexes]
         input_y = x[y_indexes]
+        if self.args.visualize_input:
+            visualize(input_x, "query")
+            visualize(input_y, "positive")
+            raise KeyError("Only visualize first batch. Comment this if you want more.")
         if self.return_loss:
             loss = self.ssl_model(input_x, input_y).mean()
             return loss
@@ -488,7 +501,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             drop_last=True
         )
         self.train_ds.is_inference = True
-        self.train_ds.compute_pairs(self.args, None)
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
         self.train_ds.is_inference = False
         return pairs_dl
 
