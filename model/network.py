@@ -308,7 +308,7 @@ def attach_compression_layer(args, backbone, image_size, projection_size, device
     representation_before_agg = backbone(rand_x)
     _, dim, _, _ = representation_before_agg.shape
     effective_projection_size = int(projection_size / args.netvlad_clusters)
-    conv_layer = nn.Sequential(nn.Conv2d(dim, effective_projection_size, 1, bias=False),
+    conv_layer = nn.Sequential(nn.Conv2d(dim, effective_projection_size, 1, bias=False if not args.disable_bn else True),
                                nn.BatchNorm2d(effective_projection_size) if not args.disable_bn else nn.Identity())
     backbone = nn.Sequential(
         backbone,
