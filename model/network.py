@@ -652,7 +652,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
     def on_train_epoch_start(self):
         self.train_ds.is_inference = True
-        self.train_ds.compute_pairs(self.args, self.ssl_model)
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
         self.train_ds.is_inference = False
 
     def setup(self, stage):
