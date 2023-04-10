@@ -17,7 +17,7 @@ import h5py
 import random
 from PIL import ImageOps, ImageFilter
 from torchvision.transforms import InterpolationMode
-
+from torch.distributed import all_gather, broadcast, barrier
 
 class GaussianBlur(object):
     def __init__(self, p):
@@ -508,6 +508,8 @@ class TripletsDataset(BaseDataset):
                     cache[indexes] = features
                 else:
                     cache[indexes.numpy()] = features.cpu().numpy()
+        
+        model.train()
         return cache
 
     def get_query_features(self, query_index, cache):
@@ -941,24 +943,35 @@ class PairsDataset(BaseDataset):
         else:
             return len(self.pairs_global_indexes)
     
-    def compute_pairs(self, args, model):
+    def compute_pairs(self, args, model, global_zero=False):
         self.is_inference = True
         if self.mining == "random":
-            self.compute_pairs_random(args, model)
+            self.compute_pairs_random(args, model, global_zero)
         else:
             raise NotImplementedError()
 
     @staticmethod
-    def compute_cache(args, model, subset_ds, cache_shape):
+    def compute_cache(args, model, subset_ds, cache_shape, global_zero):
         """Compute the cache containing features of images, which is used to
         find best positive and hardest negatives."""
-        subset_dl = DataLoader(
-            dataset=subset_ds,
-            num_workers=args.num_workers,
-            batch_size=args.infer_batch_size,
-            shuffle=False,
-            pin_memory=(args.device == "cuda"),
-        )
+        if not (args.num_nodes == 1 and args.num_devices == 1):
+            sampler = torch.utils.data.distributed.DistributedSampler(subset_ds, shuffle=False)
+            subset_dl = DataLoader(
+                dataset=subset_ds,
+                num_workers=args.num_workers,
+                batch_size=args.infer_batch_size,
+                shuffle=False,
+                pin_memory=True,
+                sampler=sampler
+            )
+        else:
+            subset_dl = DataLoader(
+                dataset=subset_ds,
+                num_workers=args.num_workers,
+                batch_size=args.infer_batch_size,
+                shuffle=False,
+                pin_memory=True,
+            )
         model.eval()
 
         # RAMEfficient2DMatrix can be replaced by np.zeros, but using
@@ -969,13 +982,24 @@ class PairsDataset(BaseDataset):
             cache = RAMEfficient2DMatrix(cache_shape, dtype=np.float32)
         
         with torch.no_grad():
-            for images, indexes in tqdm(subset_dl, ncols=100):
+            for images, indices in tqdm(subset_dl, ncols=100):
                 images = images.to(args.device)
+                indices = indices.to(args.device)
                 features = model(images, None, return_embedding=True, return_projection=False)
-                if args.use_faiss_gpu:
-                    cache[indexes] = features
+                if not (args.num_nodes == 1 and args.num_devices == 1):
+                    features_list = [torch.zeros_like(features) for i in range(args.num_devices * args.num_nodes)]
+                    indices_list = [torch.zeros_like(indices) for i in range(args.num_devices * args.num_nodes)]
+                    all_gather(features_list, features)
+                    all_gather(indices_list, indices)
+                    features_list = torch.cat(features_list, dim=0)
+                    indices_list = torch.cat(indices_list, dim=0)
+                    cache[indices_list.cpu().numpy()] = features_list.cpu().numpy()
                 else:
-                    cache[indexes.numpy()] = features.cpu().numpy()
+                    if args.use_faiss_gpu:
+                        cache[indices] = features
+                    else:
+                        cache[indices.cpu().numpy()] = features.cpu().numpy()
+        model.train()
         return cache
 
     def get_query_features(self, query_index, cache):
@@ -993,7 +1017,7 @@ class PairsDataset(BaseDataset):
             best_positive_index = random.choice(self.hard_positives_per_query[query_index]).item()
         else:
             positives_features = cache[self.hard_positives_per_query[query_index]]
-            faiss_index = faiss.IndexFlatL2(args.features_dim)
+            faiss_index = faiss.IndexFlatL2(args.projection_size)
             faiss_index.add(positives_features)
             # Search the best positive (within 10 meters AND nearest in features space)
             _, best_positive_num = faiss_index.search(
@@ -1002,7 +1026,7 @@ class PairsDataset(BaseDataset):
             )
         return best_positive_index
         
-    def compute_pairs_random(self, args, model):
+    def compute_pairs_random(self, args, model, global_zero):
         self.pairs_global_indexes = []
         # Take 1000 random queries
         sampled_queries_indexes = np.random.choice(
@@ -1024,7 +1048,7 @@ class PairsDataset(BaseDataset):
         )
         if model is not None:
             cache = self.compute_cache(
-                args, model, subset_ds, (len(self), args.features_dim)
+                args, model, subset_ds, (len(self), args.projection_size), global_zero
             )
 
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)

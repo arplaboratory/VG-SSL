@@ -381,7 +381,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 args.features_dim = 2048
             else:
                 raise NotImplementedError()
-            self.backbone, args.features_dim, self.projection_size = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
+            self.backbone, args.features_dim, args.projection_size = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
         self.args = args
         self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone
@@ -401,7 +401,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.projection_size,
+                        projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simsiam":
@@ -411,7 +411,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.projection_size,
+                        projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_momentum=False,
                         disable_projector = self.disable_projector)
@@ -421,7 +421,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.projection_size,
+                        projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector)
         elif self.args.ssl_method == "bt":
@@ -430,7 +430,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.projection_size,
+                        projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
                         disable_projector = self.disable_projector)
@@ -441,7 +441,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.projection_size,
+                        projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simclr":
@@ -451,7 +451,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         image_size = self.args.resize,
                         num_nodes = self.args.num_nodes,
                         num_devices = self.args.num_devices,
-                        projection_size = self.projection_size,
+                        projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_simclr = True,
                         disable_projector = self.disable_projector)
@@ -497,11 +497,16 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             num_workers=self.args.num_workers,
             batch_size=self.batch_size,
             collate_fn=datasets_ws.collate_fn,
-            pin_memory=(self.args.device == "cuda"),
+            persistent_workers=True,
+            pin_memory=True,
             drop_last=True
         )
         self.train_ds.is_inference = True
-        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
+        if not (self.args.num_nodes == 0 and self.args.num_devices == 0):
+            global_zero = self.trainer.is_global_zero
+        else:
+            global_zero = False
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model, global_zero)
         self.train_ds.is_inference = False
         return pairs_dl
 
@@ -510,6 +515,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             dataset=self.val_ds,
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
+            pin_memory=True,
         )
         return val_dataloader
 
@@ -518,6 +524,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             dataset=self.test_ds,
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
+            pin_memory=True,
         )
         return test_dataloader
 
@@ -652,7 +659,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
     def on_train_epoch_start(self):
         self.train_ds.is_inference = True
-        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
+        if not (self.args.num_nodes == 0 and self.args.num_devices == 0):
+            global_zero = self.trainer.is_global_zero
+        else:
+            global_zero = False
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model, global_zero)
         self.train_ds.is_inference = False
 
     def setup(self, stage):
