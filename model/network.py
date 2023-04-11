@@ -23,6 +23,7 @@ import datasets_ws
 import pytorch_lightning as pl
 from torch.utils.data.dataloader import DataLoader
 from datasets_ws import inv_base_transforms
+from torchvision import transforms
 import numpy as np
 import faiss
 
@@ -668,6 +669,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
     def setup(self, stage):
         if stage == "validate":
+            self.initialize_flag = True
             if self.args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
                 self.ssl_model.to(self.args.device)
                 self.ssl_model.device = self.args.device
@@ -678,6 +680,17 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                     self.train_ds.is_inference = False
                 self.args.features_dim *= self.args.netvlad_clusters
         elif stage == "fit":
+            if not hasattr(self, "initialize_flag"):
+                self.initialize_flag = True
+                if self.args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
+                    self.ssl_model.to(self.args.device)
+                    self.ssl_model.device = self.args.device
+                    if not self.args.resume:
+                        self.train_ds.is_inference = True
+                        self.aggregation.initialize_netvlad_layer(
+                            self.args, self.train_ds, self.backbone)
+                        self.train_ds.is_inference = False
+                    self.args.features_dim *= self.args.netvlad_clusters
             self.ssl_model.to(self.args.device)
             self.ssl_model.device = self.args.device
 
