@@ -55,7 +55,6 @@ class VICREG(nn.Module):
         image_size,
         num_nodes,
         num_devices,
-        skip_proj = False,
         projection_size = 8192,
         projection_hidden_size = 8192,
         use_bt_loss = False,
@@ -80,9 +79,12 @@ class VICREG(nn.Module):
         self.std_coeff = std_coeff
         self.cov_coeff = cov_coeff
         self.lambd = lambd
-        self.num_features = int(mlp.split("-")[-1])
-        self.mlp = mlp
-        self.skip_proj = skip_proj
+        self.mlp = ""
+        for i in range(n_layers-1):
+            self.mlp += str(projection_hidden_size) + "-"
+        self.mlp += str(projection_size)
+        self.num_features = int(self.mlp.split("-")[-1])
+        
         self.projector = None
         self.bn = None
 
