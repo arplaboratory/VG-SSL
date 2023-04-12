@@ -1017,7 +1017,10 @@ class PairsDataset(BaseDataset):
             best_positive_index = random.choice(self.hard_positives_per_query[query_index]).item()
         else:
             positives_features = cache[self.hard_positives_per_query[query_index]]
-            faiss_index = faiss.IndexFlatL2(args.projection_size)
+            if args.disable_projector:
+                faiss_index = faiss.IndexFlatL2(args.projection_size)
+            else:
+                faiss_index = faiss.IndexFlatL2(args.features_dim)
             faiss_index.add(positives_features)
             # Search the best positive (within 10 meters AND nearest in features space)
             _, best_positive_num = faiss_index.search(
@@ -1047,9 +1050,14 @@ class PairsDataset(BaseDataset):
             list(sampled_queries_indexes + self.database_num)
         )
         if model is not None:
-            cache = self.compute_cache(
-                args, model, subset_ds, (len(self), args.projection_size), global_zero
-            )
+            if args.disable_projector:
+                cache = self.compute_cache(
+                    args, model, subset_ds, (len(self), args.projection_size), global_zero
+                )
+            else:
+                cache = self.compute_cache(
+                    args, model, subset_ds, (len(self), args.features_dim), global_zero
+                )
 
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
