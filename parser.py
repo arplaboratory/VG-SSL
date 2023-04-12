@@ -10,6 +10,13 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--self_aug_epsilon",
+        type=float,
+        default=0,
+        help="the portion of self augmented image"
+    )
+
+    parser.add_argument(
         "--use_best_positive",
         action="store_true",
         help="Use best positive in feature space"

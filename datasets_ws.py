@@ -828,10 +828,18 @@ class PairsDataset(BaseDataset):
         datasets_folder="datasets",
         dataset_name="pitts30k",
         split="train",
+        epsilon,
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
         self.mining = args.mining
         self.is_inference = False
+
+        self.epsilon = args.self_aug_epsilon
+
+        if self.epsilon < 0.0 or self.epsilon > 1.0:
+            raise ValueError('epsilon must be in range 0 to 1')
+
+        
 
         identity_transform = transforms.Lambda(lambda x: x)
         self.resized_transform = transforms.Compose(
@@ -916,6 +924,7 @@ class PairsDataset(BaseDataset):
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
             return super().__getitem__(index)
 
+       
         # Init
         if self.database_folder_h5_df is None:
             self.database_folder_h5_df = h5py.File(
