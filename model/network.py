@@ -511,11 +511,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             drop_last=True
         )
         self.train_ds.is_inference = True
-        if not (self.args.num_nodes == 0 and self.args.num_devices == 0):
-            global_zero = self.trainer.is_global_zero
-        else:
-            global_zero = False
-        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model, global_zero)
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
         self.train_ds.is_inference = False
         return pairs_dl
 

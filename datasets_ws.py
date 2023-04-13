@@ -943,15 +943,15 @@ class PairsDataset(BaseDataset):
         else:
             return len(self.pairs_global_indexes)
     
-    def compute_pairs(self, args, model, global_zero=False):
+    def compute_pairs(self, args, model):
         self.is_inference = True
         if self.mining == "random":
-            self.compute_pairs_random(args, model, global_zero)
+            self.compute_pairs_random(args, model)
         else:
             raise NotImplementedError()
 
     @staticmethod
-    def compute_cache(args, model, subset_ds, cache_shape, global_zero):
+    def compute_cache(args, model, subset_ds, cache_shape):
         """Compute the cache containing features of images, which is used to
         find best positive and hardest negatives."""
         if not (args.num_nodes == 1 and args.num_devices == 1):
@@ -1029,7 +1029,7 @@ class PairsDataset(BaseDataset):
             )
         return best_positive_index
         
-    def compute_pairs_random(self, args, model, global_zero):
+    def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
         sampled_queries_indexes = np.random.choice(
@@ -1052,11 +1052,11 @@ class PairsDataset(BaseDataset):
         if model is not None:
             if args.disable_projector:
                 cache = self.compute_cache(
-                    args, model, subset_ds, (len(self), args.projection_size), global_zero
+                    args, model, subset_ds, (len(self), args.projection_size)
                 )
             else:
                 cache = self.compute_cache(
-                    args, model, subset_ds, (len(self), args.features_dim), global_zero
+                    args, model, subset_ds, (len(self), args.features_dim)
                 )
 
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
