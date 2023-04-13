@@ -507,7 +507,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             num_workers=self.args.num_workers,
             batch_size=self.batch_size,
             collate_fn=datasets_ws.collate_fn,
-            persistent_workers=True,
             pin_memory=True,
             drop_last=True
         )
