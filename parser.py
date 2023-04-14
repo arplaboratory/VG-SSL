@@ -10,6 +10,12 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--projection_size",
+        type=int,
+        default=-1,
+        help="If -1, then use default projection size. Otherwise, use designed projection size"
+    )
+    parser.add_argument(
         "--use_best_positive",
         action="store_true",
         help="Use best positive in feature space"
