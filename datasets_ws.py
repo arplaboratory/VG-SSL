@@ -827,17 +827,14 @@ class PairsDataset(BaseDataset):
         args,
         datasets_folder="datasets",
         dataset_name="pitts30k",
-        split="train",
-        epsilon,
+        split="train"
+    
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
         self.mining = args.mining
         self.is_inference = False
 
         self.epsilon = args.self_aug_epsilon
-
-        if self.epsilon < 0.0 or self.epsilon > 1.0:
-            raise ValueError('epsilon must be in range 0 to 1')
 
         
 
@@ -941,6 +938,7 @@ class PairsDataset(BaseDataset):
         positive = self.database_transform(
             self._find_img_in_h5(best_positive_index, "database")
         )
+    
         images = torch.stack((query, positive), 0)
         pairs_local_indexes = torch.tensor([0, 1], dtype=torch.int)
         return images, pairs_local_indexes, self.pairs_global_indexes[index]
