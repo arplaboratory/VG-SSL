@@ -831,6 +831,8 @@ class PairsDataset(BaseDataset):
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
         self.mining = args.mining
+        self.database_negatives_ratio = args.database_negatives_ratio
+        self.queries_per_epoch = args.queries_per_epoch
         self.is_inference = False
 
         identity_transform = transforms.Lambda(lambda x: x)
@@ -927,8 +929,12 @@ class PairsDataset(BaseDataset):
             self.pairs_global_indexes[index], (1, 1)
         )
 
-        query = self.query_transform(
-            self._find_img_in_h5(query_index, "queries"))
+        if query_index >= self.queries_per_epoch:
+            query = self.query_transform(
+                self._find_img_in_h5(query_index, "database")) # Database negatives
+        else:
+            query = self.query_transform(
+                self._find_img_in_h5(query_index, "queries"))
         positive = self.database_transform(
             self._find_img_in_h5(best_positive_index, "database")
         )
@@ -1032,9 +1038,16 @@ class PairsDataset(BaseDataset):
     def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
-        sampled_queries_indexes = np.random.choice(
-            self.queries_num, args.queries_per_epoch, replace=False
-        )
+        # Enable oversampling
+        try:
+            sampled_queries_indexes = np.random.choice(
+                self.queries_num, args.queries_per_epoch, replace=False
+            )
+        except:
+            sampled_queries_indexes = np.random.choice(
+                self.queries_num, args.queries_per_epoch, replace=True
+            )
+
         # Take all the positives
         positives_indexes = [
             self.hard_positives_per_query[i] for i in sampled_queries_indexes
@@ -1074,5 +1087,20 @@ class PairsDataset(BaseDataset):
                 (query_index, best_positive_index)
             )
 
+        if args.database_negatives_ratio > 0:
+            database_indexes = list(range(self.database_num))
+            soft_positives_indexes = [
+            self.soft_positives_per_query[i] for i in sampled_queries_indexes
+            ]
+            neg_indexes = np.setdiff1d(
+                database_indexes, soft_positives_indexes, assume_unique=True
+            )
+            sampled_negative_database_indexes = np.random.choice(
+                neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=False
+            )
+            for neg_index in sampled_negative_database_indexes:
+                self.pairs_global_indexes.append(
+                    (neg_index, neg_index)
+                )
         # self.pairs_global_indexes is a tensor of shape [1000, 2]
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
