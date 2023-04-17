@@ -374,24 +374,28 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         super().__init__()
         self.backbone = get_backbone(args)
         if args.disable_projector:
-            if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                args.features_dim = 2048
-            elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-                args.features_dim = 8192
-            elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                args.features_dim = 2048
+            if args.projection_size == -1:
+                if args.ssl_method == "byol" or args.ssl_method == "simsiam":
+                    args.features_dim = 2048
+                elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+                    args.features_dim = 8192
+                elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+                    args.features_dim = 2048
+                else:
+                    raise NotImplementedError()
             else:
-                raise NotImplementedError()
+                args.features_dim = args.projection_size
             self.backbone, args.features_dim, args.projection_size = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
         else:
-            if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                args.projection_size = 2048
-            elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-                args.projection_size = 8192
-            elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                args.projection_size = 2048
-            else:
-                raise NotImplementedError()
+            if args.projection_size == -1:
+                if args.ssl_method == "byol" or args.ssl_method == "simsiam":
+                    args.projection_size = 2048
+                elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+                    args.projection_size = 8192
+                elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+                    args.projection_size = 2048
+                else:
+                    raise NotImplementedError()
         self.args = args
         self.aggregation = get_aggregation(args)
         self.arch_name = args.backbone
@@ -502,22 +506,18 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def train_dataloader(self):
         # Compute pairs to use in the pair loss
         # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
+        self.train_ds.is_inference = True
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
+        self.train_ds.is_inference = False
         pairs_dl = DataLoader(
             dataset=self.train_ds,
             num_workers=self.args.num_workers,
             batch_size=self.batch_size,
             collate_fn=datasets_ws.collate_fn,
-            persistent_workers=True,
             pin_memory=True,
-            drop_last=True
+            drop_last=True,
+            shuffle=True
         )
-        self.train_ds.is_inference = True
-        if not (self.args.num_nodes == 0 and self.args.num_devices == 0):
-            global_zero = self.trainer.is_global_zero
-        else:
-            global_zero = False
-        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model, global_zero)
-        self.train_ds.is_inference = False
         return pairs_dl
 
     def val_dataloader(self):
@@ -526,6 +526,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
             pin_memory=True,
+            shuffle=False
         )
         return val_dataloader
 
@@ -535,6 +536,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
             pin_memory=True,
+            shuffle=True
         )
         return test_dataloader
 
@@ -669,11 +671,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
     def on_train_epoch_start(self):
         self.train_ds.is_inference = True
-        if not (self.args.num_nodes == 0 and self.args.num_devices == 0):
-            global_zero = self.trainer.is_global_zero
-        else:
-            global_zero = False
-        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model, global_zero)
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
         self.train_ds.is_inference = False
 
     def setup(self, stage):

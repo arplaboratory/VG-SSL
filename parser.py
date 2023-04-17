@@ -10,6 +10,18 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--database_negatives_ratio",
+        type=float,
+        default=0,
+        help="Add random database negatives with itself for contrastive learning"
+    )
+    parser.add_argument(
+        "--projection_size",
+        type=int,
+        default=-1,
+        help="If -1, then use default projection size. Otherwise, use designed projection size"
+    )
+    parser.add_argument(
         "--self_aug_epsilon",
         type=float,
         default=0,
@@ -353,11 +365,11 @@ def parse_arguments():
             "CRN must be resumed from a trained NetVLAD checkpoint, but you set resume=None."
         )
 
-    if args.queries_per_epoch % args.cache_refresh_rate != 0:
-        raise ValueError(
-            "Ensure that queries_per_epoch is divisible by cache_refresh_rate, "
-            + f"because {args.queries_per_epoch} is not divisible by {args.cache_refresh_rate}"
-        )
+    # if args.queries_per_epoch % args.cache_refresh_rate != 0:
+    #     raise ValueError(
+    #         "Ensure that queries_per_epoch is divisible by cache_refresh_rate, "
+    #         + f"because {args.queries_per_epoch} is not divisible by {args.cache_refresh_rate}"
+    #     )
 
     if torch.cuda.device_count() >= 2 and args.criterion in ["sare_joint", "sare_ind"]:
         raise NotImplementedError(
