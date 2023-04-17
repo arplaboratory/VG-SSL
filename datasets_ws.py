@@ -929,7 +929,7 @@ class PairsDataset(BaseDataset):
             self.pairs_global_indexes[index], (1, 1)
         )
 
-        if query_index >= self.queries_per_epoch:
+        if index >= self.queries_per_epoch:
             query = self.query_transform(
                 self._find_img_in_h5(query_index, "database")) # Database negatives
         else:
