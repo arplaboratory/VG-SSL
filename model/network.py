@@ -512,7 +512,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             batch_size=self.batch_size,
             collate_fn=datasets_ws.collate_fn,
             pin_memory=True,
-            drop_last=True
+            drop_last=True,
+            shuffle=True
         )
         self.train_ds.is_inference = True
         self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
@@ -525,6 +526,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
             pin_memory=True,
+            shuffle=False
         )
         return val_dataloader
 
@@ -534,6 +536,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
             pin_memory=True,
+            shuffle=True
         )
         return test_dataloader
 
