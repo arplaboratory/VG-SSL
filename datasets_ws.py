@@ -1043,13 +1043,10 @@ class PairsDataset(BaseDataset):
             sampled_queries_indexes = np.random.choice(
                 self.queries_num, args.queries_per_epoch, replace=False
             )
-            oversampling = False
         except:
             sampled_queries_indexes = np.random.choice(
                 self.queries_num, args.queries_per_epoch, replace=True
             )
-            oversampling = True
-
         # Take all the positives
         positives_indexes = [
             self.hard_positives_per_query[i] for i in sampled_queries_indexes
@@ -1090,16 +1087,22 @@ class PairsDataset(BaseDataset):
             )
 
         if args.database_negatives_ratio > 0:
-            database_indexes = list(range(self.database_num))
-            soft_positives_indexes = [
+            database_indexes = np.array(list(range(self.database_num)))
+            soft_positives_indexes = np.unique(np.concatenate([
                 self.soft_positives_per_query[i] for i in sampled_queries_indexes
-            ]
+            ]))
             neg_indexes = np.setdiff1d(
-                database_indexes, soft_positives_indexes, assume_unique=True if oversampling is False else False
+                database_indexes, soft_positives_indexes, assume_unique=True
             )
-            sampled_negative_database_indexes = np.random.choice(
-                neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=False
-            )
+            # Enable oversampling
+            try:
+                sampled_negative_database_indexes = np.random.choice(
+                    neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=False
+                )
+            except:
+                sampled_negative_database_indexes = np.random.choice(
+                    neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=True
+                )
             for neg_index in sampled_negative_database_indexes:
                 self.pairs_global_indexes.append(
                     (neg_index, neg_index)
