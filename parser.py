@@ -10,6 +10,12 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--queue_size",
+        type=int,
+        default=4096,
+        help="Queue size for MOCO"
+    )
+    parser.add_argument(
         "--database_negatives_ratio",
         type=float,
         default=0,
