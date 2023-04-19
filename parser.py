@@ -10,9 +10,15 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--momentum",
+        type=float,
+        default=0.999,
+        help="Momentum for BYOL"
+    )
+    parser.add_argument(
         "--queue_size",
         type=int,
-        default=4096,
+        default=2048,
         help="Queue size for MOCO"
     )
     parser.add_argument(
