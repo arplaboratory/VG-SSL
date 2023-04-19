@@ -417,6 +417,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
+                        moving_average_decay = self.args.momentum,
                         disable_projector = self.disable_projector)
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
