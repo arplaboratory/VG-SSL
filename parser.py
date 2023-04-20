@@ -12,7 +12,7 @@ def parse_arguments():
     parser.add_argument(
         "--momentum",
         type=float,
-        default=0.999,
+        default=0.99,
         help="Momentum for BYOL"
     )
     parser.add_argument(
