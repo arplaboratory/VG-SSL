@@ -389,11 +389,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         else:
             if args.projection_size == -1:
                 if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                    args.projection_size = 2048
+                    args.projection_size = 256
                 elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
                     args.projection_size = 8192
                 elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                    args.projection_size = 2048
+                    args.projection_size = 128
                 else:
                     raise NotImplementedError()
         self.args = args
