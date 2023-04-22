@@ -63,8 +63,13 @@ def resume_model(args, model, suffix=None):
     return model
 
 def resume_model_ssl(args, model):
-    model.backbone = resume_model(args, model, suffix="backbone")
-    model.aggregation = resume_model(args, model, suffix="aggregation")
+    model = resume_model_ssl_single(args, model)
+    return model
+
+def resume_model_ssl_single(args, model):
+    checkpoint = torch.load(args.resume, map_location=args.device)
+    state_dict = checkpoint["state_dict"]
+    model.load_state_dict(state_dict, strict=False)
     return model
 
 def resume_train(args, model, optimizer=None, strict=False):
