@@ -13,7 +13,7 @@ conda activate VPR_SSL
 
 if [ ${SLURM_ARRAY_TASK_ID} == 1 ]
 then
-    python3 eval.py --resume='logs/default/'$1'/best_model.pth' --dataset_name st_lucia --datasets_folder /scratch/jx1190/VPR_SSL/datasets --backbone $2 --resize 224 224
+    python3 eval.py --resume='logs/default/'$1'/best_model.pth' --dataset_name st_lucia --datasets_folder /scratch/jx1190/VPR_SSL/datasets --backbone $2
 fi
 if [ ${SLURM_ARRAY_TASK_ID} == 2 ]
 then
