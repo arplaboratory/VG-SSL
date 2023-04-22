@@ -3,7 +3,7 @@
 #SBATCH --ntasks-per-node=4              # runs 2 tasks on each server
 #SBATCH --cpus-per-task=8                # uses 1 compute core per task
 #SBATCH --gres=gpu:4
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --mem=100GB
 #SBATCH --job-name=train_msls_ssl
 #SBATCH --output=train_msls_ssl.out
@@ -11,4 +11,4 @@
 eval "$(conda shell.bash hook)"
 conda activate VPR_SSL
 
-srun python3 train_ssl.py --dataset_name=msls --mining random --datasets_folder=./datasets --epochs_num 200 --seed $SEED --ssl_method $SSL --method pair --backbone resnet50conv4 --lr $LR --optim adam --train_batch_size $BATCH --infer_batch_size 64 --disable_projector --use_best_positive --disable_bn --unfreeze
+srun python3 train_ssl.py --dataset_name=msls --mining random --datasets_folder=./datasets --epochs_num 200 --seed $SEED --ssl_method $SSL --method pair --backbone resnet50conv4 --lr $LR --optim adam --train_batch_size $BATCH --infer_batch_size 64 --use_best_positive --unfreeze --database_negatives_ratio 0.1
