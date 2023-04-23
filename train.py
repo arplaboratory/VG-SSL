@@ -169,8 +169,8 @@ if torch.cuda.device_count() >= 2:
 
 # First val loop for sanity check
 # Compute recalls on validation set
-recalls, recalls_str = test.test(args, val_ds, model)
-logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
+# recalls, recalls_str = test.test(args, val_ds, model)
+# logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
 
 # Training loop
 for epoch_num in range(start_epoch_num, args.epochs_num):
