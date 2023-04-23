@@ -45,23 +45,6 @@ def resume_model(args, model):
     model.load_state_dict(state_dict)
     return model
 
-def resume_model(args, model, suffix=None):
-    checkpoint = torch.load(args.resume, map_location=args.device)
-    if f"model_{suffix}_state_dict" in checkpoint:
-        state_dict = checkpoint[f"model_{suffix}_state_dict"]
-    else:
-        # The pre-trained models that we provide in the README do not have 'state_dict' in the keys as
-        # the checkpoint is directly the state dict
-        state_dict = checkpoint
-    # if the model contains the prefix "module" which is appendend by
-    # DataParallel, remove it to avoid errors when loading dict
-    if list(state_dict.keys())[0].startswith("module"):
-        state_dict = OrderedDict(
-            {k.replace("module.", ""): v for (k, v) in state_dict.items()}
-        )
-    model.load_state_dict(state_dict)
-    return model
-
 def resume_model_ssl(args, model):
     model = resume_model_ssl_single(args, model)
     return model
