@@ -508,8 +508,6 @@ class TripletsDataset(BaseDataset):
                     cache[indexes] = features
                 else:
                     cache[indexes.numpy()] = features.cpu().numpy()
-        
-        model.train()
         return cache
 
     def get_query_features(self, query_index, cache):
@@ -1044,6 +1042,7 @@ class PairsDataset(BaseDataset):
                 self.queries_num, args.queries_per_epoch, replace=False
             )
         except:
+            logging.debug("Oversampling queries")
             sampled_queries_indexes = np.random.choice(
                 self.queries_num, args.queries_per_epoch, replace=True
             )
@@ -1100,6 +1099,7 @@ class PairsDataset(BaseDataset):
                     neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=False
                 )
             except:
+                logging.debug("Oversampling negatives")
                 sampled_negative_database_indexes = np.random.choice(
                     neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=True
                 )

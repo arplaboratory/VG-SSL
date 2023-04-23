@@ -149,9 +149,7 @@ class NetVLAD(nn.Module):
         descriptors_num = 50000
         descs_num_per_image = 100
         images_num = math.ceil(descriptors_num / descs_num_per_image)
-        # NEED TO USE GENERATOR!
-        generator = torch.Generator().manual_seed(0)
-        random_sampler = SubsetRandomSampler(np.random.choice(len(cluster_ds), images_num, replace=False), generator=generator)
+        random_sampler = SubsetRandomSampler(np.random.choice(len(cluster_ds), images_num, replace=False))
         infer_batch_size = 16
         random_dl = DataLoader(dataset=cluster_ds, num_workers=args.num_workers,
                                 batch_size=infer_batch_size, sampler=random_sampler)

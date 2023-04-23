@@ -96,7 +96,7 @@ def resume_train_ssl(args, model, optimizer=None, strict=False):
     return model, optimizer, best_r5, start_epoch_num, not_improved_num
 
 def compute_pca(args, model, pca_dataset_folder, full_features_dim):
-    model.eval()
+    model = model.eval()
     pca_ds = datasets_ws.PCADataset(args, args.datasets_folder, pca_dataset_folder)
     dl = torch.utils.data.DataLoader(pca_ds, args.infer_batch_size, shuffle=True)
     pca_features = np.empty([min(len(pca_ds), 2**14), full_features_dim])
