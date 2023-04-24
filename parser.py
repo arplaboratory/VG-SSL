@@ -18,7 +18,7 @@ def parse_arguments():
     parser.add_argument(
         "--queue_size",
         type=int,
-        default=2048,
+        default=65536,
         help="Queue size for MOCO"
     )
     parser.add_argument(
