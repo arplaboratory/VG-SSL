@@ -10,6 +10,12 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--proj_layers",
+        type=int,
+        default=3,
+        help="Projector layer for vicreg"
+    )
+    parser.add_argument(
         "--momentum",
         type=float,
         default=0.99,

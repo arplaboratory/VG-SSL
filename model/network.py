@@ -438,7 +438,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.proj_layers)
         elif self.args.ssl_method == "bt":
             self.return_loss = True
             return VICREG(self.backbone,
@@ -448,7 +449,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.proj_layers)
         elif self.args.ssl_method == "mocov2":
             self.return_loss = True
             return MOCO(self.backbone,
