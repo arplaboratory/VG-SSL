@@ -13,7 +13,7 @@ def parse_arguments():
         "--proj_layers",
         type=int,
         default=3,
-        help="Projector layer for vicreg"
+        help="Projector layer num"
     )
     parser.add_argument(
         "--momentum",

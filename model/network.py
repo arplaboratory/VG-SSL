@@ -418,7 +418,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         moving_average_decay = self.args.momentum,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.proj_layers)
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
@@ -429,7 +430,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_momentum=False,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.proj_layers)
         elif self.args.ssl_method == "vicreg":
             self.return_loss = True
             return VICREG(self.backbone,
@@ -461,7 +463,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         disable_projector = self.disable_projector,
-                        K = self.args.queue_size)
+                        K = self.args.queue_size,
+                        n_layers = self.args.proj_layers)
         elif self.args.ssl_method == "simclr":
             self.return_loss = True
             return MOCO(self.backbone,
@@ -472,7 +475,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_simclr = True,
-                        disable_projector = self.disable_projector)
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.proj_layers)
         else:
             raise NotImplementedError()
 
@@ -522,6 +526,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             drop_last=True,
             shuffle=True
         )
+
         return pairs_dl
 
     def val_dataloader(self):

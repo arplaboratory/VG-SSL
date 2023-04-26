@@ -60,43 +60,74 @@ def update_moving_average(ema_updater, ma_model, current_model):
         ma_params.data = ema_updater.update_average(old_weight, up_weight)
 
 # MLP class for projector and predictor
-def NoBnMLP(dim, projection_size, hidden_size=4096):
-    return nn.Sequential(
-        nn.Linear(dim, hidden_size),
-        nn.ReLU(inplace=True),
-        nn.Linear(hidden_size, projection_size)
-    )
+def NoBnMLP(dim, projection_size, hidden_size=4096, n_layers=2):
+    if n_layers == 1:
+        return nn.Sequential(
+            nn.Linear(dim, projection_size)
+        )
+    elif n_layers == 2:
+        return nn.Sequential(
+            nn.Linear(dim, hidden_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_size, projection_size)
+        )
+    else:
+        raise NotImplementedError()
 
-def MLP(dim, projection_size, hidden_size=4096):
-    return nn.Sequential(
-        nn.Linear(dim, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        nn.ReLU(inplace=True),
-        nn.Linear(hidden_size, projection_size)
-    )
+def MLP(dim, projection_size, hidden_size=4096, n_layers=2):
+    if n_layers == 1:
+        return nn.Sequential(
+            nn.Linear(dim, projection_size)
+        )
+    elif n_layers == 2:
+        return nn.Sequential(
+            nn.Linear(dim, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_size, projection_size)
+        )
+    else:
+        raise NotImplementedError()
 
-def SimSiamMLP(dim, projection_size, hidden_size=4096):
-    return nn.Sequential(
-        nn.Linear(dim, hidden_size, bias=False),
-        nn.BatchNorm1d(hidden_size),
-        nn.ReLU(inplace=True),
-        nn.Linear(hidden_size, hidden_size, bias=False),
-        nn.BatchNorm1d(hidden_size),
-        nn.ReLU(inplace=True),
-        nn.Linear(hidden_size, projection_size, bias=False),
-        nn.BatchNorm1d(projection_size, affine=False)
-    )
+def SimSiamMLP(dim, projection_size, hidden_size=4096, n_layers=3):
+    if n_layers == 3:
+        return nn.Sequential(
+            nn.Linear(dim, hidden_size, bias=False),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_size, hidden_size, bias=False),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_size, projection_size, bias=False),
+            nn.BatchNorm1d(projection_size, affine=False)
+        )
+    elif n_layers == 2:
+        return nn.Sequential(
+            nn.Linear(dim, hidden_size, bias=False),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_size, projection_size, bias=False),
+            nn.BatchNorm1d(projection_size, affine=False)
+        )
+    elif n_layers == 1:
+        return nn.Sequential(
+            nn.Linear(dim, projection_size, bias=False),
+            nn.BatchNorm1d(projection_size, affine=False)
+        )
+    else:
+        raise NotImplementedError()
 
 # a wrapper class for the base neural network
 # will manage the interception of the hidden layer output
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, disable_projector = False):
+    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, disable_projector = False, n_layers = None):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
         self.layer = layer
+        self.n_layers = n_layers
 
         self.projector = None
         self.projection_size = projection_size
@@ -141,7 +172,7 @@ class NetWrapper(nn.Module):
                 create_mlp_fn = NoBnMLP
             else:
                 raise NotImplementedError()
-            projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size)
+            projector = create_mlp_fn(dim, self.projection_size, self.projection_hidden_size, self.n_layers)
         else:
             projector = nn.Identity()
         return projector.to(hidden)
@@ -192,6 +223,7 @@ class BYOL(nn.Module):
         use_momentum = True,
         aggregation = None,
         disable_projector = False,
+        n_layers = None
     ):
         super().__init__()
         self.net = net
@@ -203,8 +235,15 @@ class BYOL(nn.Module):
         self.projection_hidden_size = projection_hidden_size
         # Augmentation is finished outside
 
+        # Default layer num for projector
+        if n_layers == None:
+            if use_momentum:
+                n_layers = 2
+            else:
+                n_layers = 3
+
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation,
-                                         disable_projector=disable_projector)
+                                         disable_projector=disable_projector, n_layers = n_layers)
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)

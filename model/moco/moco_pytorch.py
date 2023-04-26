@@ -73,7 +73,8 @@ class MOCO(nn.Module):
                  shuffle_bn=False,
                  use_simclr=False,
                  aggregation=None,
-                 disable_projector=False):
+                 disable_projector=False,
+                 n_layers=2):
         """
         dim: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
@@ -99,7 +100,7 @@ class MOCO(nn.Module):
         # create the encoders
         # num_classes is the output fc dimension
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="NoBnMLP", aggregation=self.aggregation,
-                                         disable_projector=disable_projector)
+                                         disable_projector=disable_projector, n_layers=n_layers)
         self.use_momentum = True
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
