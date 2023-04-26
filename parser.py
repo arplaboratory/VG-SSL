@@ -22,7 +22,7 @@ def parse_arguments():
         help="If -1, then use default projection size. Otherwise, use designed projection size"
     )
     parser.add_argument(
-        "--self_aug_epsilon",
+        "--aug_epsilon",
         type=float,
         default=0,
         help="the portion of self augmented image"
