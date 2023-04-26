@@ -10,9 +10,9 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
-        "--proj_layers",
+        "--n_layers",
         type=int,
-        default=3,
+        default=None,
         help="Projector layer num"
     )
     parser.add_argument(
