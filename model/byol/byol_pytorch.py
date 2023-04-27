@@ -122,7 +122,7 @@ def SimSiamMLP(dim, projection_size, hidden_size=4096, n_layers=3):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, disable_projector = False, n_layers = None):
+    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, disable_projector = False, n_layers = -1):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
@@ -223,7 +223,7 @@ class BYOL(nn.Module):
         use_momentum = True,
         aggregation = None,
         disable_projector = False,
-        n_layers = None
+        n_layers = -1
     ):
         super().__init__()
         self.net = net
@@ -236,7 +236,7 @@ class BYOL(nn.Module):
         # Augmentation is finished outside
 
         # Default layer num for projector
-        if n_layers == None:
+        if n_layers == -1:
             if use_momentum:
                 n_layers = 2
             else:

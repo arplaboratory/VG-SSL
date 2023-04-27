@@ -12,7 +12,7 @@ def parse_arguments():
     parser.add_argument(
         "--n_layers",
         type=int,
-        default=None,
+        default=-1,
         help="Projector layer num"
     )
     parser.add_argument(
