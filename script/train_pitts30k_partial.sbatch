@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8                # uses 1 compute core per task
 #SBATCH --time=24:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --mem=90GB
+#SBATCH --mem=100GB
 #SBATCH --job-name=train_pitts30k_partial
 #SBATCH --output=train_pitts30k_partial.out
 

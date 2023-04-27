@@ -149,10 +149,13 @@ class NetVLAD(nn.Module):
         descriptors_num = 50000
         descs_num_per_image = 100
         images_num = math.ceil(descriptors_num / descs_num_per_image)
-        # NEED TO USE GENERATOR!
-        generator = torch.Generator().manual_seed(0)
-        random_sampler = SubsetRandomSampler(np.random.choice(len(cluster_ds), images_num, replace=False), generator=generator)
-        infer_batch_size = 32
+        infer_batch_size = 16
+        if hasattr(args, "num_nodes"):
+            # NEED TO USE GENERATOR WHEN USING PL
+            generator = torch.Generator().manual_seed(0)
+            random_sampler = SubsetRandomSampler(np.random.choice(len(cluster_ds), images_num, replace=False), generator=generator)
+        else:
+            random_sampler = SubsetRandomSampler(np.random.choice(len(cluster_ds), images_num, replace=False))
         random_dl = DataLoader(dataset=cluster_ds, num_workers=args.num_workers,
                                 batch_size=infer_batch_size, sampler=random_sampler)
         with torch.no_grad():
@@ -170,7 +173,7 @@ class NetVLAD(nn.Module):
                     sample = np.random.choice(image_descriptors.shape[1], descs_num_per_image, replace=False)
                     startix = batchix + ix * descs_num_per_image
                     descriptors[startix:startix + descs_num_per_image, :] = image_descriptors[ix, sample, :]
-        kmeans = faiss.Kmeans(args.features_dim, self.clusters_num, niter=100, verbose=False, seed=0)
+        kmeans = faiss.Kmeans(args.features_dim, self.clusters_num, niter=100, verbose=False)
         kmeans.train(descriptors)
         logging.debug(f"NetVLAD centroids shape: {kmeans.centroids.shape}")
         self.init_params(kmeans.centroids, descriptors)

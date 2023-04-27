@@ -10,6 +10,24 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--proj_layers",
+        type=int,
+        default=3,
+        help="Projector layer for vicreg"
+    )
+    parser.add_argument(
+        "--momentum",
+        type=float,
+        default=0.99,
+        help="Momentum for BYOL"
+    )
+    parser.add_argument(
+        "--queue_size",
+        type=int,
+        default=65536,
+        help="Queue size for MOCO"
+    )
+    parser.add_argument(
         "--database_negatives_ratio",
         type=float,
         default=0,
