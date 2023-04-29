@@ -940,9 +940,9 @@ class PairsDataset(BaseDataset):
 
         epi = random.uniform(0, 1)
         if self.epsilon <= epi:
-        positive = self.database_transform(
-            self._find_img_in_h5(best_positive_index, "database")
-        )
+            positive = self.database_transform(
+                self._find_img_in_h5(best_positive_index, "database")
+            )
         else: 
             positive = self.aug_transform(img)
     
