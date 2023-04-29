@@ -19,27 +19,6 @@ from PIL import ImageOps, ImageFilter
 from torchvision.transforms import InterpolationMode
 from torch.distributed import all_gather, broadcast, barrier
 
-class GaussianBlur(object):
-    def __init__(self, p):
-        self.p = p
-
-    def __call__(self, img):
-        if np.random.rand() < self.p:
-            sigma = np.random.rand() * 1.9 + 0.1
-            return img.filter(ImageFilter.GaussianBlur(sigma))
-        else:
-            return img
-
-
-class Solarization(object):
-    def __init__(self, p):
-        self.p = p
-
-    def __call__(self, img):
-        if np.random.rand() < self.p:
-            return ImageOps.solarize(img)
-        else:
-            return img
 
 imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std = [0.229, 0.224, 0.225]
@@ -814,6 +793,8 @@ class RAMEfficient2DMatrixGPU:
             return self.matrix[index]
 
 
+
+
 class PairsDataset(BaseDataset):
     """Dataset used for training, it is used to compute the pairs
     for SSL training.
@@ -825,13 +806,19 @@ class PairsDataset(BaseDataset):
         args,
         datasets_folder="datasets",
         dataset_name="pitts30k",
-        split="train",
+        split="train"
+    
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
         self.mining = args.mining
         self.database_negatives_ratio = args.database_negatives_ratio
         self.queries_per_epoch = args.queries_per_epoch
         self.is_inference = False
+
+        self.epsilon = args.aug_epsilon
+
+        if self.epsilon < 0.0 or self.epsilon > 1.0:
+            raise ValueError('epsilon value should in range of 0 to 1')
 
         identity_transform = transforms.Lambda(lambda x: x)
         self.resized_transform = transforms.Compose(
@@ -869,6 +856,22 @@ class PairsDataset(BaseDataset):
                 if args.random_rotation != None
                 else identity_transform,
                 self.resized_transform,
+            ]
+        )
+
+        self.aug_transform = transforms.Compose(
+            [
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomApply(
+                    [
+                        transforms.ColorJitter(
+                            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
+                        )
+                    ],
+                    p=0.8,
+                ),
+                transforms.RandomGrayscale(p=0.2),
+                self.resized_transform
             ]
         )
 
@@ -916,6 +919,7 @@ class PairsDataset(BaseDataset):
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
             return super().__getitem__(index)
 
+       
         # Init
         if self.database_folder_h5_df is None:
             self.database_folder_h5_df = h5py.File(
@@ -928,14 +932,20 @@ class PairsDataset(BaseDataset):
         )
 
         if index >= self.queries_per_epoch:
-            query = self.query_transform(
-                self._find_img_in_h5(query_index, "database")) # Database negatives
+            img = self._find_img_in_h5(query_index, "database") # Database negatives
         else:
-            query = self.query_transform(
-                self._find_img_in_h5(query_index, "queries"))
-        positive = self.database_transform(
-            self._find_img_in_h5(best_positive_index, "database")
-        )
+            img = self._find_img_in_h5(query_index, "queries")
+
+        query = self.query_transform(img)
+
+        epi = random.uniform(0, 1)
+        if self.epsilon <= epi:
+            positive = self.database_transform(
+                self._find_img_in_h5(best_positive_index, "database")
+            )
+        else: 
+            positive = self.aug_transform(img)
+    
         images = torch.stack((query, positive), 0)
         pairs_local_indexes = torch.tensor([0, 1], dtype=torch.int)
         return images, pairs_local_indexes, self.pairs_global_indexes[index]

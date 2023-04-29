@@ -40,6 +40,13 @@ def parse_arguments():
         help="If -1, then use default projection size. Otherwise, use designed projection size"
     )
     parser.add_argument(
+        "--aug_epsilon",
+        type=float,
+        default=0,
+        help="the portion of self augmented image"
+    )
+
+    parser.add_argument(
         "--use_best_positive",
         action="store_true",
         help="Use best positive in feature space"
@@ -81,7 +88,7 @@ def parse_arguments():
         "--ssl_method",
         type=str,
         default='none',
-        choices=["none", "byol", "simclr", "simsiam", "vicreg", "bt", "mocov2"],
+        choices=["none", "byol", "simclr", "simsiam", "vicreg", "vicreg_no_proj", "bt", "mocov2"],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(

@@ -1,1 +1,1 @@
-sbatch --export=ALL,SSL=vicreg,SEED=0 ./script/train_pitts30k_ssl.sbatch  
+sbatch --export=ALL,SSL=vicreg,SEED=3407 ./script/train_pitts30k_ssl_skip_proj.sbatch 
