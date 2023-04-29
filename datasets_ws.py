@@ -871,7 +871,7 @@ class PairsDataset(BaseDataset):
                     p=0.8,
                 ),
                 transforms.RandomGrayscale(p=0.2),
-                identity_transform
+                self.resized_transform
             ]
         )
 
@@ -932,19 +932,19 @@ class PairsDataset(BaseDataset):
         )
 
         if index >= self.queries_per_epoch:
-            query = self.query_transform(
-                self._find_img_in_h5(query_index, "database")) # Database negatives
+            img = self._find_img_in_h5(query_index, "database") # Database negatives
         else:
-            query = self.query_transform(
-                self._find_img_in_h5(query_index, "queries"))
+            img = self._find_img_in_h5(query_index, "queries")
+
+        query = self.query_transform(img)
 
         epi = random.uniform(0, 1)
-        if self.epsilon >= epi:
-            positive = self.database_transform(
-                self._find_img_in_h5(best_positive_index, "database")
-            )
+        if self.epsilon <= epi:
+        positive = self.database_transform(
+            self._find_img_in_h5(best_positive_index, "database")
+        )
         else: 
-            positive = self.aug_transform(query)
+            positive = self.aug_transform(img)
     
         images = torch.stack((query, positive), 0)
         pairs_local_indexes = torch.tensor([0, 1], dtype=torch.int)
