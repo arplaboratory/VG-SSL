@@ -680,7 +680,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.log("test_recall1", recalls[0], logger=True)
 
     def configure_optimizers(self):
-        self.ssl_model.backbone.requires_grad = False
+        self.backbone.requires_grad = False
         self.freeze_backbone = True
         optimizer, self.criterion_pairs = setup_optimizer_loss(self.args, filter(lambda p: p.requires_grad, self.ssl_model.parameters()), return_loss=True)
         return optimizer
@@ -696,9 +696,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.train_ds.is_inference = False
 
         if self.freeze_backbone and self.current_epoch > self.args.freeze_epoch_num:
-            self.ssl_model.backbone.requires_grad = True
-            self.ssl_model.freeze_backbone = False
-            self.optimizers().add_param_group(self.ssl_model.backbone.parameters())
+            self.backbone.requires_grad = True
+            self.freeze_backbone = False
+            self.optimizers().add_param_group(self.backbone.parameters())
 
 
     def setup(self, stage):
