@@ -10,6 +10,12 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--freeze_epoch_num",
+        type=int,
+        default=-1,
+        help="Before this epoch num, Backbone is frozen"
+    )
+    parser.add_argument(
         "--n_layers",
         type=int,
         default=-1,
