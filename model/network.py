@@ -416,6 +416,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.lr = 0
         self.batch_size = batch_size
         self.freeze_backbone = False
+        self.freeze_param_list = []
 
     def get_ssl_model(self):
         if self.args.ssl_method == "byol":
@@ -680,7 +681,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.log("test_recall1", recalls[0], logger=True)
 
     def configure_optimizers(self):
-        self.backbone.requires_grad = False
+        for param in self.backbone.parameters():
+            self.freeze_param_list.append(param.requires_grad)
+            param.requires_grad = False
         self.freeze_backbone = True
         optimizer, self.criterion_pairs = setup_optimizer_loss(self.args, filter(lambda p: p.requires_grad, self.ssl_model.parameters()), return_loss=True)
         return optimizer
@@ -696,11 +699,11 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.train_ds.is_inference = False
 
         if self.freeze_backbone and self.current_epoch > self.args.freeze_epoch_num:
-            self.backbone.requires_grad = True
+            for i, param in enumerate(self.backbone.parameters()):
+                param.requires_grad = self.freeze_param_list[i]
             self.freeze_backbone = False
-            self.optimizers().add_param_group({'params': self.backbone.parameters()})
+            self.optimizers().add_param_group({'params': filter(lambda p: p.requires_grad, self.backbone.parameters())})
             logging.debug("Adding backbone to the optimizer for unfreezing")
-            logging.debug(self.optimizers().param_groups)
 
     def setup(self, stage):
         if stage == "validate":
