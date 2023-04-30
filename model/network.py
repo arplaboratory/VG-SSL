@@ -698,8 +698,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if self.freeze_backbone and self.current_epoch > self.args.freeze_epoch_num:
             self.backbone.requires_grad = True
             self.freeze_backbone = False
-            self.optimizers().add_param_group(self.backbone.parameters())
-
+            self.optimizers().add_param_group({'params': self.backbone.parameters()})
+            logging.debug("Adding backbone to the optimizer for unfreezing")
+            logging.debug(self.optimizers().param_groups)
 
     def setup(self, stage):
         if stage == "validate":
