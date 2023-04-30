@@ -62,7 +62,7 @@ class VICREG(nn.Module):
         std_coeff = 25.0,
         cov_coeff = 1.0,
         lambd = 0.0051,
-        n_layers = 3,
+        n_layers = 2,
         aggregation = None,
         disable_projector = False,
     ):
