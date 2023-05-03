@@ -58,7 +58,7 @@ class GeoLocalizationNet(nn.Module):
         super().__init__()
         self.backbone = get_backbone(args)
         if hasattr(args, "projection_size") and args.projection_size != -1:
-            self.backbone, args.features_dim, args.projection_size = attach_compression_layer(args, self.backbone, args.resize, args.projection_size, args.device)
+            self.backbone, args.features_dim, args.projection_size = attach_compression_layer_conv(args, self.backbone, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
         self.self_att = False
@@ -307,7 +307,7 @@ def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
-def attach_compression_layer(args, backbone, image_size, projection_size, device):
+def attach_compression_layer_conv(args, backbone, image_size, projection_size, device):
     rand_x = torch.randn(2, 3, image_size[0], image_size[1])
     backbone.eval()
     representation_before_agg = backbone(rand_x)
@@ -321,6 +321,26 @@ def attach_compression_layer(args, backbone, image_size, projection_size, device
         conv_layer
     )
     return backbone, effective_projection_size, projection_size
+
+def attach_compression_layer_fc(args, backbone, aggregation, image_size, projection_size, device):
+    rand_x = torch.randn(2, 3, image_size[0], image_size[1])
+    backbone.eval()
+    aggregation.eval()
+    representation_before_agg = backbone(rand_x)
+    representation_after_agg = aggregation(representation_before_agg)
+    backbone.train()
+    aggregation.train()
+    _, dim = representation_after_agg.shape
+    if projection_size == dim:
+        fc_layer = nn.Sequential(L2Norm())
+    else:
+        fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                L2Norm())
+    aggregation = nn.Sequential(
+        aggregation,
+        fc_layer
+    )
+    return aggregation
 
 def visualize(image_tensor, name):
     if not os.path.isdir("vis"):
@@ -377,7 +397,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def __init__(self, args, ds_list, batch_size = 2):
         super().__init__()
         self.backbone = get_backbone(args)
-        if args.disable_projector:
+        if args.disable_projector and not args.compress_fc:
             if args.projection_size == -1:
                 if args.ssl_method == "byol" or args.ssl_method == "simsiam":
                     args.features_dim = 2048
@@ -389,7 +409,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                     raise NotImplementedError()
             else:
                 args.features_dim = args.projection_size
-            self.backbone, args.features_dim, args.projection_size = attach_compression_layer(args, self.backbone, args.resize, args.features_dim, args.device)
+            self.backbone, args.features_dim, args.projection_size = attach_compression_layer_conv(args, self.backbone, args.resize, args.features_dim, args.device)
         else:
             if args.projection_size == -1:
                 if args.ssl_method == "byol" or args.ssl_method == "simsiam":
@@ -411,6 +431,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 raise NotImplementedError()
         self.args = args
         self.aggregation = get_aggregation(args)
+        if args.compress_fc:
+            self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.return_loss = False
         self.disable_projector = args.disable_projector
@@ -604,9 +626,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def _shared_on_eval_epoch_end(self, eval_ds, args):
         queries_features = self.all_features[eval_ds.database_num:]
         database_features = self.all_features[: eval_ds.database_num]
-        if args.matching == "cos":
-            queries_features = F.normalize(queries_features, dim=1)
-            database_features = F.normalize(database_features, dim=1)
+        queries_features = F.normalize(queries_features, dim=1)
+        database_features = F.normalize(database_features, dim=1)
 
         # cos is equivalent to l2 if the vector is normalized
         if args.matching == "l2":
@@ -717,10 +738,15 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 self.ssl_model.device = self.args.device
                 if not self.args.resume:
                     self.train_ds.is_inference = True
-                    self.aggregation.initialize_netvlad_layer(
-                        self.args, self.train_ds, self.backbone)
+                    if self.args.compress_fc:
+                        self.aggregation[0].initialize_netvlad_layer(
+                            self.args, self.train_ds, self.backbone)
+                        self.args.features_dim = self.args.projection_size
+                    else:
+                        self.aggregation.initialize_netvlad_layer(
+                            self.args, self.train_ds, self.backbone)
+                        self.args.features_dim *= self.args.netvlad_clusters
                     self.train_ds.is_inference = False
-                self.args.features_dim *= self.args.netvlad_clusters
         elif stage == "fit":
             if not hasattr(self, "initialize_flag"):
                 self.initialize_flag = True
@@ -729,10 +755,15 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                     self.ssl_model.device = self.args.device
                     if not self.args.resume:
                         self.train_ds.is_inference = True
-                        self.aggregation.initialize_netvlad_layer(
-                            self.args, self.train_ds, self.backbone)
+                        if self.args.compress_fc:
+                            self.aggregation[0].initialize_netvlad_layer(
+                                self.args, self.train_ds, self.backbone)
+                            self.args.features_dim = self.args.projection_size
+                        else:
+                            self.aggregation.initialize_netvlad_layer(
+                                self.args, self.train_ds, self.backbone)
+                            self.args.features_dim *= self.args.netvlad_clusters
                         self.train_ds.is_inference = False
-                    self.args.features_dim *= self.args.netvlad_clusters
             self.ssl_model.to(self.args.device)
             self.ssl_model.device = self.args.device
 
