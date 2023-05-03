@@ -57,6 +57,8 @@ class GeoLocalizationNet(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.backbone = get_backbone(args)
+        if hasattr(args, "projection_size") and args.projection_size != -1:
+            self.backbone, args.features_dim, args.projection_size = attach_compression_layer(args, self.backbone, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
         self.self_att = False
@@ -307,7 +309,9 @@ def get_output_channels_dim(model):
 
 def attach_compression_layer(args, backbone, image_size, projection_size, device):
     rand_x = torch.randn(2, 3, image_size[0], image_size[1])
+    backbone.eval()
     representation_before_agg = backbone(rand_x)
+    backbone.train()
     _, dim, _, _ = representation_before_agg.shape
     effective_projection_size = int(projection_size / args.netvlad_clusters)
     conv_layer = nn.Sequential(nn.Conv2d(dim, effective_projection_size, 1, bias=False if not args.disable_bn else True),
