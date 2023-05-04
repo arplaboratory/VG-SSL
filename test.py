@@ -5,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
-
+import torch.functional as F
 
 def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
     """This function gives the same output as test(), but uses much less RAM.
