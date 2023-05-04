@@ -421,9 +421,6 @@ def parse_arguments():
                 "Off-the-shelf models are trained only with ResNet-50/101 + GeM + FC 2048"
             )
 
-    if args.pca_dim != None and args.pca_dataset_folder == None:
-        raise ValueError("Please specify --pca_dataset_folder when using pca")
-
     if args.disable_projector and args.ssl_method == "none":
         raise ValueError("Disabling projectors must be with ssl training")
 
