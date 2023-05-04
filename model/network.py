@@ -431,7 +431,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 raise NotImplementedError()
         self.args = args
         self.aggregation = get_aggregation(args)
-        if args.compress_fc:
+        if args.disable_projector and args.compress_fc:
             self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.return_loss = False
@@ -738,7 +738,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 self.ssl_model.device = self.args.device
                 if not self.args.resume:
                     self.train_ds.is_inference = True
-                    if self.args.compress_fc:
+                    if self.args.disable_projector and self.args.compress_fc:
                         self.aggregation[0].initialize_netvlad_layer(
                             self.args, self.train_ds, self.backbone)
                         self.args.features_dim = self.args.projection_size
@@ -755,7 +755,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                     self.ssl_model.device = self.args.device
                     if not self.args.resume:
                         self.train_ds.is_inference = True
-                        if self.args.compress_fc:
+                        if self.args.disable_projector and self.args.compress_fc:
                             self.aggregation[0].initialize_netvlad_layer(
                                 self.args, self.train_ds, self.backbone)
                             self.args.features_dim = self.args.projection_size
