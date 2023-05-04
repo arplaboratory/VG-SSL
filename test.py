@@ -5,7 +5,6 @@ import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
-import torch.nn.functional as F
 
 def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
     """This function gives the same output as test(), but uses much less RAM.
@@ -275,8 +274,6 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
 
     queries_features = all_features[eval_ds.database_num:]
     database_features = all_features[: eval_ds.database_num]
-    queries_features = F.normalize(queries_features, dim=1)
-    database_features = F.normalize(database_features, dim=1)
 
     if args.use_faiss_gpu:
         torch.cuda.empty_cache()
