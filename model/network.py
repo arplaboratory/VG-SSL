@@ -57,10 +57,12 @@ class GeoLocalizationNet(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.backbone = get_backbone(args)
-        if hasattr(args, "projection_size") and args.projection_size != -1:
+        if args.projection_size != -1 and not args.compress_fc:
             self.backbone, args.features_dim, args.projection_size = attach_compression_layer_conv(args, self.backbone, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
+        if args.projection_size != -1 and args.compress_fc:
+             self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
         self.self_att = False
 
         if args.aggregation in ["gem", "spoc", "mac", "rmac"]:

@@ -30,10 +30,14 @@ logging.info(f"The outputs are being saved in {args.save_dir}")
 
 ######################################### MODEL #########################################
 model = network.GeoLocalizationNet(args)
+logging.debug(model)
 model = model.to(args.device)
 
 if args.aggregation in ["netvlad", "crn"]:
-    args.features_dim *= args.netvlad_clusters
+    if args.projection_size != -1 and args.compress_fc:
+        args.features_dim = args.projection_size
+    else:
+        args.features_dim *= args.netvlad_clusters
 
 if args.resume is not None:
     logging.info(f"Resuming model from {args.resume}")
