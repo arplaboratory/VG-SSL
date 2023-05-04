@@ -6,6 +6,7 @@ import numpy as np
 from collections import OrderedDict
 from os.path import join
 from sklearn.decomposition import PCA
+from tqdm import tqdm
 
 import datasets_ws
 
