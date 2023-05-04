@@ -1072,31 +1072,6 @@ class PairsDataset(BaseDataset):
         ]  # Flatten list of lists to a list
         positives_indexes = list(np.unique(positives_indexes))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-
         # Compute the cache only for queries and their positives, in order to find the best positive
         subset_ds = Subset(
             self, positives_indexes +
