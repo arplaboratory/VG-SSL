@@ -95,18 +95,21 @@ def resume_train_ssl(args, model, optimizer=None, strict=False):
         )
     return model, optimizer, best_r5, start_epoch_num, not_improved_num
 
-def compute_pca(args, model, pca_dataset_folder, full_features_dim):
+def compute_pca(args, model, full_features_dim):
     model = model.eval()
-    pca_ds = datasets_ws.PCADataset(args, args.datasets_folder, pca_dataset_folder)
-    dl = torch.utils.data.DataLoader(pca_ds, args.infer_batch_size, shuffle=True)
+    pca_ds = datasets_ws.PCADataset(
+        args, args.datasets_folder, args.dataset_name)
+    dl = torch.utils.data.DataLoader(
+        pca_ds, args.infer_batch_size, shuffle=True)
     pca_features = np.empty([min(len(pca_ds), 2**14), full_features_dim])
+    logging.info("Computing PCA")
     with torch.no_grad():
-        for i, images in enumerate(dl):
+        for i, images in tqdm(enumerate(dl), ncols=100):
             if i * args.infer_batch_size >= len(pca_features):
                 break
             features = model(images).cpu().numpy()
             pca_features[
-                i * args.infer_batch_size : (i * args.infer_batch_size) + len(features)
+                i * args.infer_batch_size: (i * args.infer_batch_size) + len(features)
             ] = features
     pca = PCA(args.pca_dim)
     pca.fit(pca_features)
