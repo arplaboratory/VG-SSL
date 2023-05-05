@@ -336,8 +336,15 @@ def attach_compression_layer_fc(args, backbone, aggregation, image_size, project
     if projection_size == dim:
         fc_layer = nn.Sequential(L2Norm())
     else:
-        fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                L2Norm())
+        if args.ssl_method == "simsiam" or args.ssl_method == "byol":
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size),
+                                    L2Norm())
+        else:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    L2Norm())
     aggregation = nn.Sequential(
         aggregation,
         fc_layer
