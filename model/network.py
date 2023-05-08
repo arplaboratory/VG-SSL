@@ -387,6 +387,8 @@ def attach_compression_layer_fc(args, backbone, aggregation, image_size, project
             elif args.n_layers == 1:
                 fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
                                         L2Norm() if not args.remove_norm else nn.Identity())
+            else:
+                raise NotImplementedError()
         else:
             raise NotImplementedError()
     aggregation = nn.Sequential(
