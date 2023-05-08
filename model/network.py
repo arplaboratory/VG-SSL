@@ -352,6 +352,9 @@ def attach_compression_layer_fc(args, backbone, aggregation, image_size, project
                                         nn.ReLU(inplace=True),
                                         nn.Linear(projection_size, projection_size),
                                         L2Norm())
+            elif args.n_layers == 1:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        L2Norm())
             else:
                 raise NotImplementedError()
         elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
@@ -366,11 +369,24 @@ def attach_compression_layer_fc(args, backbone, aggregation, image_size, project
             else:
                 raise NotImplementedError()
         elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                    nn.BatchNorm1d(projection_size),
-                                    nn.ReLU(inplace=True),
-                                    nn.Linear(projection_size, projection_size),
-                                    L2Norm() if not args.remove_norm else nn.Identity())
+            if args.n_layers == 3:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        L2Norm() if not args.remove_norm else nn.Identity()) 
+            elif args.n_layers == 2:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        L2Norm() if not args.remove_norm else nn.Identity())
+            elif args.n_layers == 1:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        L2Norm() if not args.remove_norm else nn.Identity())
         else:
             raise NotImplementedError()
     aggregation = nn.Sequential(
