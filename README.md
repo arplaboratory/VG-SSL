@@ -1,8 +1,8 @@
 # VG_SSL
 
-This repo is to investigate visual place recognition with self-supervised learning methods.
+This repo is to investigate visual geo-localization with self-supervised representation learning methods.
 
-The visual place recognition framework refers to *deep-visual-geo-localization-benchmark*(https://github.com/gmberton/deep-visual-geo-localization-benchmark).
+The baseline VG framework refers to *deep-visual-geo-localization-benchmark*(https://github.com/gmberton/deep-visual-geo-localization-benchmark).
 
 Thank you for these brilliant works!
 
