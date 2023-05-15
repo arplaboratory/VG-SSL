@@ -1,4 +1,4 @@
-# VPR_SSL
+# VG_SSL
 
 This repo is to investigate visual place recognition with self-supervised learning methods.
 
