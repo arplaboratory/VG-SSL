@@ -10,17 +10,108 @@ def parse_arguments():
     )
     # Training parameters
     parser.add_argument(
+        "--remove_norm",
+        action="store_true",
+        help="Remove norm for vicreg and bt?"
+    )
+    parser.add_argument(
+        "--compress_fc",
+        action="store_true",
+        help="Compress fc"
+    )
+    parser.add_argument(
+        "--freeze_epoch_num",
+        type=int,
+        default=-1,
+        help="Before this epoch num, Backbone is frozen"
+    )
+    parser.add_argument(
+        "--n_layers",
+        type=int,
+        default=-1,
+        help="Projector layer num"
+    )
+    parser.add_argument(
+        "--momentum",
+        type=float,
+        default=0.99,
+        help="Momentum for BYOL"
+    )
+    parser.add_argument(
+        "--queue_size",
+        type=int,
+        default=65536,
+        help="Queue size for MOCO"
+    )
+    parser.add_argument(
+        "--database_negatives_ratio",
+        type=float,
+        default=0,
+        help="Add random database negatives with itself for contrastive learning"
+    )
+    parser.add_argument(
+        "--projection_size",
+        type=int,
+        default=-1,
+        help="If -1, then use default projection size. Otherwise, use designed projection size"
+    )
+    parser.add_argument(
+        "--aug_epsilon",
+        type=float,
+        default=0,
+        help="the portion of self augmented image"
+    )
+
+    parser.add_argument(
+        "--use_best_positive",
+        action="store_true",
+        help="Use best positive in feature space"
+    )
+    parser.add_argument(
+        "--visualize_input",
+        action="store_true",
+        help="Visualize input for SSL learning"
+    )
+    parser.add_argument(
+        "--disable_bn",
+        action="store_true",
+        help="Disable bn in compression layer"
+    )
+    parser.add_argument(
+        "--matching",
+        type=str,
+        default="l2",
+        choices=["l2", "cos"],
+        help="Matching based on Euclidian (l2) distance or cosine similarity"
+    )
+    parser.add_argument(
+        "--wd",
+        type=float,
+        default=1e-6,
+        help="Weight decay"
+    )
+    parser.add_argument(
+        "--disable_projector",
+        action="store_true",
+        help="Choose if we disable projector for ssl training"
+    )
+    parser.add_argument(
+        "--cosine_scheduler",
+        action="store_true",
+        help="Choose if we use cosine scheduler"
+    )
+    parser.add_argument(
         "--ssl_method",
         type=str,
-        default='simclr',
-        choices=["byol", "simclr", "simsiam"],
+        default='none',
+        choices=["none", "byol", "simclr", "simsiam", "vicreg", "vicreg_no_proj", "bt", "mocov2"],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
         "--method",
         type=str,
         default='triplet',
-        choices=["triplet", "pair"],
+        choices=['triplet', 'pair'],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
@@ -56,9 +147,9 @@ def parse_arguments():
         "--margin", type=float, default=0.1, help="margin for the triplet loss"
     )
     parser.add_argument(
-        "--epochs_num", type=int, default=40, help="number of epochs to train for"
+        "--epochs_num", type=int, default=100, help="number of epochs to train for"
     )
-    parser.add_argument("--patience", type=int, default=40)
+    parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.00001, help="_")
     parser.add_argument(
         "--lr_crn_layer",
@@ -73,7 +164,7 @@ def parse_arguments():
         help="Learning rate to finetune pretrained network when using CRN",
     )
     parser.add_argument(
-        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd"]
+        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd", "lars"]
     )
     parser.add_argument(
         "--cache_refresh_rate",
@@ -121,6 +212,7 @@ def parse_arguments():
             "resnet101conv5",
             "cct384",
             "vit",
+            "vitmae",
         ],
         help="_",
     )
@@ -213,7 +305,7 @@ def parse_arguments():
     parser.add_argument("--device", type=str,
                         default="cuda", choices=["cuda", "cpu"])
     parser.add_argument(
-        "--num_workers", type=int, default=8, help="num_workers for all dataloaders"
+        "--num_workers", type=int, default=4, help="num_workers for all dataloaders"
     )
     parser.add_argument(
         "--resize",
@@ -307,11 +399,11 @@ def parse_arguments():
             "CRN must be resumed from a trained NetVLAD checkpoint, but you set resume=None."
         )
 
-    if args.queries_per_epoch % args.cache_refresh_rate != 0:
-        raise ValueError(
-            "Ensure that queries_per_epoch is divisible by cache_refresh_rate, "
-            + f"because {args.queries_per_epoch} is not divisible by {args.cache_refresh_rate}"
-        )
+    # if args.queries_per_epoch % args.cache_refresh_rate != 0:
+    #     raise ValueError(
+    #         "Ensure that queries_per_epoch is divisible by cache_refresh_rate, "
+    #         + f"because {args.queries_per_epoch} is not divisible by {args.cache_refresh_rate}"
+    #     )
 
     if torch.cuda.device_count() >= 2 and args.criterion in ["sare_joint", "sare_ind"]:
         raise NotImplementedError(
@@ -336,6 +428,12 @@ def parse_arguments():
 
     if args.pca_dim != None and args.pca_dataset_folder == None:
         raise ValueError("Please specify --pca_dataset_folder when using pca")
+
+    if args.disable_projector and args.ssl_method == "none":
+        raise ValueError("Disabling projectors must be with ssl training")
+
+    if args.matching == "cos" and args.ssl_method == "triplet":
+        raise NotImplementedError("Cosine distance is not implemented for triplet training")
 
     return args
     

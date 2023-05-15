@@ -15,15 +15,27 @@ from sklearn.neighbors import NearestNeighbors
 from torch.utils.data.dataloader import DataLoader
 import h5py
 import random
+from PIL import ImageOps, ImageFilter
+from torchvision.transforms import InterpolationMode
+from torch.distributed import all_gather, broadcast, barrier
 
+
+imagenet_mean = [0.485, 0.456, 0.406]
+imagenet_std = [0.229, 0.224, 0.225]
 base_transform = transforms.Compose(
     [
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
-                             0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
     ]
 )
 
+inv_base_transforms = transforms.Compose(
+    [ 
+        transforms.Normalize(mean = [ -m/s for m, s in zip(imagenet_mean, imagenet_std)],
+                             std = [ 1/s for s in imagenet_std]),
+        transforms.ToPILImage()
+    ]
+)
 
 def path_to_pil_img(path):
     return Image.open(path).convert("RGB")
@@ -55,26 +67,6 @@ def collate_fn(batch):
             len(global_indexes) * i
         )  # Increment local indexes by offset (len(global_indexes) is 12)
     return images, torch.cat(tuple(triplets_local_indexes)), triplets_global_indexes
-
-
-class PCADataset(data.Dataset):
-    def __init__(
-        self, args, datasets_folder="dataset", dataset_folder="pitts30k/images/train"
-    ):
-        dataset_folder_full_path = join(datasets_folder, dataset_folder)
-        if not os.path.exists(dataset_folder_full_path):
-            raise FileNotFoundError(
-                f"Folder {dataset_folder_full_path} does not exist")
-        self.images_paths = sorted(
-            glob(join(dataset_folder_full_path, "**", "*.jpg"), recursive=True)
-        )
-
-    def __getitem__(self, index):
-        return base_transform(path_to_pil_img(self.images_paths[index]))
-
-    def __len__(self):
-        return len(self.images_paths)
-
 
 class BaseDataset(data.Dataset):
     """Dataset with images from database and queries, used for inference (testing and building cache)."""
@@ -253,7 +245,31 @@ class BaseDataset(data.Dataset):
             self.database_folder_h5_df.close()
             self.queries_folder_h5_df.close()
 
+class PCADataset(BaseDataset):
+    def __init__(
+        self, args, datasets_folder="datasets", dataset_name="pitts30k"
+        ):
+        # Always use train for PCA fit
+        super().__init__(args, datasets_folder, dataset_name, split="train")
 
+    def __getitem__(self, index):
+        # return base_transform(path_to_pil_img(self.images_paths[index]))
+        # Init
+        if self.database_folder_h5_df is None:
+            self.database_folder_h5_df = h5py.File(
+                self.database_folder_h5_path, "r")
+            self.queries_folder_h5_df = h5py.File(
+                self.queries_folder_h5_path, "r")
+        img = self._find_img_in_h5(index)
+        img = base_transform(img)
+        # PCA resize or not?
+        if self.test_method == "hard_resize":
+            # self.test_method=="hard_resize" is the default, resizes all images to the same size.
+            img = transforms.functional.resize(img, self.resize)
+        else:
+            img = self._test_query_transform(img)
+        return img
+        
 class TripletsDataset(BaseDataset):
     """Dataset used for training, it is used to compute the triplets
     with TripletsDataset.compute_triplets() with various mining methods.
@@ -458,7 +474,7 @@ class TripletsDataset(BaseDataset):
             shuffle=False,
             pin_memory=(args.device == "cuda"),
         )
-        model = model.eval()
+        model.eval()
 
         # RAMEfficient2DMatrix can be replaced by np.zeros, but using
         # RAMEfficient2DMatrix is RAM efficient for full database mining.
@@ -781,6 +797,8 @@ class RAMEfficient2DMatrixGPU:
             return self.matrix[index]
 
 
+
+
 class PairsDataset(BaseDataset):
     """Dataset used for training, it is used to compute the pairs
     for SSL training.
@@ -792,11 +810,19 @@ class PairsDataset(BaseDataset):
         args,
         datasets_folder="datasets",
         dataset_name="pitts30k",
-        split="train",
+        split="train"
+    
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
         self.mining = args.mining
+        self.database_negatives_ratio = args.database_negatives_ratio
+        self.queries_per_epoch = args.queries_per_epoch
         self.is_inference = False
+
+        self.epsilon = args.aug_epsilon
+
+        if self.epsilon < 0.0 or self.epsilon > 1.0:
+            raise ValueError('epsilon value should in range of 0 to 1')
 
         identity_transform = transforms.Lambda(lambda x: x)
         self.resized_transform = transforms.Compose(
@@ -834,6 +860,22 @@ class PairsDataset(BaseDataset):
                 if args.random_rotation != None
                 else identity_transform,
                 self.resized_transform,
+            ]
+        )
+
+        self.aug_transform = transforms.Compose(
+            [
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomApply(
+                    [
+                        transforms.ColorJitter(
+                            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
+                        )
+                    ],
+                    p=0.8,
+                ),
+                transforms.RandomGrayscale(p=0.2),
+                self.resized_transform
             ]
         )
 
@@ -881,6 +923,7 @@ class PairsDataset(BaseDataset):
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
             return super().__getitem__(index)
 
+       
         # Init
         if self.database_folder_h5_df is None:
             self.database_folder_h5_df = h5py.File(
@@ -892,11 +935,21 @@ class PairsDataset(BaseDataset):
             self.pairs_global_indexes[index], (1, 1)
         )
 
-        query = self.query_transform(
-            self._find_img_in_h5(query_index, "queries"))
-        positive = self.database_transform(
-            self._find_img_in_h5(best_positive_index, "database")
-        )
+        if index >= self.queries_per_epoch:
+            img = self._find_img_in_h5(query_index, "database") # Database negatives
+        else:
+            img = self._find_img_in_h5(query_index, "queries")
+
+        query = self.query_transform(img)
+
+        epi = random.uniform(0, 1)
+        if self.epsilon <= epi:
+            positive = self.database_transform(
+                self._find_img_in_h5(best_positive_index, "database")
+            )
+        else: 
+            positive = self.aug_transform(img)
+    
         images = torch.stack((query, positive), 0)
         pairs_local_indexes = torch.tensor([0, 1], dtype=torch.int)
         return images, pairs_local_indexes, self.pairs_global_indexes[index]
@@ -910,23 +963,103 @@ class PairsDataset(BaseDataset):
     
     def compute_pairs(self, args, model):
         self.is_inference = True
-        if self.mining == "full":
-            raise NotImplementedError('Full mining for SSL is not implemented')
-        elif self.mining == "partial" or self.mining == "msls_weighted":
-            raise NotImplementedError('Partial mining for SSL is not implemented')
-        elif self.mining == "random":
+        if self.mining == "random":
             self.compute_pairs_random(args, model)
+        else:
+            raise NotImplementedError()
 
+    @staticmethod
+    def compute_cache(args, model, subset_ds, cache_shape):
+        """Compute the cache containing features of images, which is used to
+        find best positive and hardest negatives."""
+        if not (args.num_nodes == 1 and args.num_devices == 1):
+            sampler = torch.utils.data.distributed.DistributedSampler(subset_ds, shuffle=False)
+            subset_dl = DataLoader(
+                dataset=subset_ds,
+                num_workers=args.num_workers,
+                batch_size=args.infer_batch_size,
+                shuffle=False,
+                pin_memory=True,
+                sampler=sampler
+            )
+        else:
+            subset_dl = DataLoader(
+                dataset=subset_ds,
+                num_workers=args.num_workers,
+                batch_size=args.infer_batch_size,
+                shuffle=False,
+                pin_memory=True,
+            )
+        model.eval()
+
+        # RAMEfficient2DMatrix can be replaced by np.zeros, but using
+        # RAMEfficient2DMatrix is RAM efficient for full database mining.
+        if args.use_faiss_gpu:
+            cache = RAMEfficient2DMatrixGPU(cache_shape, dtype=torch.float32, device=args.device)
+        else:
+            cache = RAMEfficient2DMatrix(cache_shape, dtype=np.float32)
+        
+        with torch.no_grad():
+            for images, indices in tqdm(subset_dl, ncols=100):
+                images = images.to(args.device)
+                indices = indices.to(args.device)
+                features = model(images, None, return_embedding=True, return_projection=False)
+                if not (args.num_nodes == 1 and args.num_devices == 1):
+                    features_list = [torch.zeros_like(features) for i in range(args.num_devices * args.num_nodes)]
+                    indices_list = [torch.zeros_like(indices) for i in range(args.num_devices * args.num_nodes)]
+                    all_gather(features_list, features)
+                    all_gather(indices_list, indices)
+                    features_list = torch.cat(features_list, dim=0)
+                    indices_list = torch.cat(indices_list, dim=0)
+                    cache[indices_list.cpu().numpy()] = features_list.cpu().numpy()
+                else:
+                    if args.use_faiss_gpu:
+                        cache[indices] = features
+                    else:
+                        cache[indices.cpu().numpy()] = features.cpu().numpy()
+        model.train()
+        return cache
+
+    def get_query_features(self, query_index, cache):
+        query_features = cache[query_index + self.database_num]
+        if query_features is None:
+            raise RuntimeError(
+                f"For query {self.queries_paths[query_index]} "
+                + f"with index {query_index} features have not been computed!\n"
+                + "There might be some bug with caching"
+            )
+        return query_features
+        
     def get_best_positive_index(self, args, query_index, cache, query_features):
-        best_positive_index = random.choice(self.hard_positives_per_query[query_index]).item()
+        if cache is None:
+            best_positive_index = random.choice(self.hard_positives_per_query[query_index]).item()
+        else:
+            positives_features = cache[self.hard_positives_per_query[query_index]]
+            if args.disable_projector:
+                faiss_index = faiss.IndexFlatL2(args.projection_size)
+            else:
+                faiss_index = faiss.IndexFlatL2(args.features_dim)
+            faiss_index.add(positives_features)
+            # Search the best positive (within 10 meters AND nearest in features space)
+            _, best_positive_num = faiss_index.search(
+                query_features.reshape(1, -1), 1)
+            best_positive_index = self.hard_positives_per_query[query_index][best_positive_num[0]].item(
+            )
         return best_positive_index
-
+        
     def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
-        sampled_queries_indexes = np.random.choice(
-            self.queries_num, args.cache_refresh_rate, replace=False
-        )
+        # Enable oversampling
+        try:
+            sampled_queries_indexes = np.random.choice(
+                self.queries_num, args.queries_per_epoch, replace=False
+            )
+        except:
+            logging.debug("Oversampling queries")
+            sampled_queries_indexes = np.random.choice(
+                self.queries_num, args.queries_per_epoch, replace=True
+            )
         # Take all the positives
         positives_indexes = [
             self.hard_positives_per_query[i] for i in sampled_queries_indexes
@@ -936,14 +1069,57 @@ class PairsDataset(BaseDataset):
         ]  # Flatten list of lists to a list
         positives_indexes = list(np.unique(positives_indexes))
 
+        # Compute the cache only for queries and their positives, in order to find the best positive
+        subset_ds = Subset(
+            self, positives_indexes +
+            list(sampled_queries_indexes + self.database_num)
+        )
+        if model is not None:
+            if args.disable_projector:
+                cache = self.compute_cache(
+                    args, model, subset_ds, (len(self), args.projection_size)
+                )
+            else:
+                cache = self.compute_cache(
+                    args, model, subset_ds, (len(self), args.features_dim)
+                )
+
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
-            best_positive_index = self.get_best_positive_index(
-                args, query_index, None, None
-            )
+            if model is not None:
+                query_features = self.get_query_features(query_index, cache)
+                best_positive_index = self.get_best_positive_index(
+                args, query_index, cache, query_features
+                )
+            else:
+                best_positive_index = self.get_best_positive_index(
+                    args, query_index, None, None
+                )
             self.pairs_global_indexes.append(
                 (query_index, best_positive_index)
             )
 
+        if args.database_negatives_ratio > 0:
+            database_indexes = np.array(list(range(self.database_num)))
+            soft_positives_indexes = np.unique(np.concatenate([
+                self.soft_positives_per_query[i] for i in sampled_queries_indexes
+            ]))
+            neg_indexes = np.setdiff1d(
+                database_indexes, soft_positives_indexes, assume_unique=True
+            )
+            # Enable oversampling
+            try:
+                sampled_negative_database_indexes = np.random.choice(
+                    neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=False
+                )
+            except:
+                logging.debug("Oversampling negatives")
+                sampled_negative_database_indexes = np.random.choice(
+                    neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=True
+                )
+            for neg_index in sampled_negative_database_indexes:
+                self.pairs_global_indexes.append(
+                    (neg_index, neg_index)
+                )
         # self.pairs_global_indexes is a tensor of shape [1000, 2]
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)

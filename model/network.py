@@ -1,4 +1,3 @@
-
 import os
 import torch
 import logging
@@ -7,6 +6,8 @@ from torch import nn
 from os.path import join
 from transformers import ViTModel
 from google_drive_downloader import GoogleDriveDownloader as gdd
+from transformers import ViTMAEConfig, ViTMAEModel
+import torch.nn.functional as F
 
 from model.cct import cct_14_7x2_384
 from model.aggregation import Flatten
@@ -14,7 +15,17 @@ from model.normalization import L2Norm
 import model.aggregation as aggregation
 from model.non_local import NonLocalBlock
 from model.byol.byol_pytorch import BYOL
+from model.vicreg.vicreg_pytorch import VICREG
+from model.moco.moco_pytorch import MOCO
 from model.sync_batchnorm import convert_model
+from model.vicreg.utils import adjust_learning_rate, LARS, exclude_bias_and_norm
+import datasets_ws
+import pytorch_lightning as pl
+from torch.utils.data.dataloader import DataLoader
+from datasets_ws import inv_base_transforms
+from torchvision import transforms
+import numpy as np
+import faiss
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
@@ -39,14 +50,19 @@ PRETRAINED_SSL_MODELS = {
     'simsiam': 'simsiam-resnet50'
 }
 
+
 class GeoLocalizationNet(nn.Module):
     """The used networks are composed of a backbone and an aggregation layer.
     """
     def __init__(self, args):
         super().__init__()
         self.backbone = get_backbone(args)
+        if args.projection_size != -1 and not args.compress_fc:
+            self.backbone, args.features_dim, args.projection_size = attach_compression_layer_conv(args, self.backbone, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
+        if args.projection_size != -1 and args.compress_fc:
+             self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
         self.self_att = False
 
         if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
@@ -69,7 +85,7 @@ class GeoLocalizationNet(nn.Module):
             self.non_local = nn.Sequential(*non_local_list)
             self.self_att = True
 
-    def forward(self, x):
+    def forward(self, x):   
         x = self.backbone(x)
         if self.self_att:
             x = self.non_local(x)
@@ -243,7 +259,7 @@ def get_backbone(args):
                         params.requires_grad = True
         args.features_dim = 384
         return backbone
-    elif args.backbone.startswith("vit"):
+    elif args.backbone == ("vit"):
         if args.resize[0] == 224:
             backbone = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
         elif args.resize[0] == 384:
@@ -264,7 +280,26 @@ def get_backbone(args):
                         params.requires_grad = True
         args.features_dim = 768
         return backbone
+    elif args.backbone == ("vitmae"):
+        if args.resize[0] == 224:
+            backbone = ViTMAEModel.from_pretrained("facebook/vit-mae-base")
+        else:
+            raise ValueError('Image size for ViT must be either 224 or 384')
+        if args.trunc_te:
+            logging.debug(f"Truncate ViT at transformers encoder {args.trunc_te}")
+            backbone.encoder.layer = backbone.encoder.layer[:args.trunc_te]
+        if args.freeze_te:
+            logging.debug(f"Freeze all the layers up to tranformer encoder {args.freeze_te+1}")
+            for p in backbone.parameters():
+                p.requires_grad = False
+            for name, child in backbone.encoder.layer.named_children():
+                if int(name) > args.freeze_te:
+                    for params in child.parameters():
+                        params.requires_grad = True
+        args.features_dim = 768
+        return backbone
 
+    
     
     backbone = torch.nn.Sequential(*layers)
     args.features_dim = get_output_channels_dim(backbone)  # Dinamically obtain number of channels in output
@@ -274,45 +309,273 @@ def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
-class SSLGeoLocalizationNet():
+def attach_compression_layer_conv(args, backbone, image_size, projection_size, device):
+    rand_x = torch.randn(2, 3, image_size[0], image_size[1])
+    backbone.eval()
+    representation_before_agg = backbone(rand_x)
+    backbone.train()
+    _, dim, _, _ = representation_before_agg.shape
+    effective_projection_size = int(projection_size / args.netvlad_clusters)
+    conv_layer = nn.Sequential(nn.Conv2d(dim, effective_projection_size, 1, bias=False if not args.disable_bn else True),
+                               nn.BatchNorm2d(effective_projection_size) if not args.disable_bn else nn.Identity())
+    backbone = nn.Sequential(
+        backbone,
+        conv_layer
+    )
+    return backbone, effective_projection_size, projection_size
+
+def attach_compression_layer_fc(args, backbone, aggregation, image_size, projection_size, device):
+    rand_x = torch.randn(2, 3, image_size[0], image_size[1])
+    backbone.eval()
+    aggregation.eval()
+    representation_before_agg = backbone(rand_x)
+    representation_after_agg = aggregation(representation_before_agg)
+    backbone.train()
+    aggregation.train()
+    _, dim = representation_after_agg.shape
+    if projection_size == dim:
+        fc_layer = nn.Sequential(L2Norm())
+    else:
+        if args.ssl_method == "simsiam" or args.ssl_method == "byol":
+            if args.n_layers == 3:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        L2Norm())
+            elif args.n_layers == 2:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        L2Norm())
+            elif args.n_layers == 1:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        L2Norm())
+            else:
+                raise NotImplementedError()
+        elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+            if args.n_layers == 2:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        L2Norm())
+            elif args.n_layers == 1:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        L2Norm())
+            else:
+                raise NotImplementedError()
+        elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+            if args.n_layers == 3:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        L2Norm() if not args.remove_norm else nn.Identity()) 
+            elif args.n_layers == 2:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        nn.BatchNorm1d(projection_size),
+                                        nn.ReLU(inplace=True),
+                                        nn.Linear(projection_size, projection_size),
+                                        L2Norm() if not args.remove_norm else nn.Identity())
+            elif args.n_layers == 1:
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                        L2Norm() if not args.remove_norm else nn.Identity())
+            else:
+                raise NotImplementedError()
+        else:
+            raise NotImplementedError()
+    aggregation = nn.Sequential(
+        aggregation,
+        fc_layer
+    )
+    return aggregation
+
+def visualize(image_tensor, name):
+    if not os.path.isdir("vis"):
+        os.mkdir("vis")
+    for i in range(len(image_tensor)):
+        img = image_tensor[i]
+        img = inv_base_transforms(img)
+        img.save(f"vis/{name}_{i}.png")
+
+def setup_optimizer_loss(args, model_parameters, return_loss=True):
+    # Setup Optimizer
+    if args.aggregation == "crn":
+        raise NotImplementedError()
+    else:
+        if args.optim == "adam":
+            if args.cosine_scheduler:
+                optimizer = torch.optim.Adam(model_parameters, lr=0, weight_decay=args.wd)
+            else:
+                optimizer = torch.optim.Adam(model_parameters, lr=args.lr, weight_decay=args.wd)
+        elif args.optim == "sgd":
+            if args.cosine_scheduler:
+                optimizer = torch.optim.SGD(
+                    model_parameters, lr=0, momentum=0.9, weight_decay=args.wd
+                )
+            else:
+                optimizer = torch.optim.SGD(
+                    model_parameters, lr=args.lr, momentum=0.9, weight_decay=args.wd
+                )
+        elif args.optim == "lars":
+            if args.cosine_scheduler:
+                optimizer = LARS(
+                    model_parameters, lr=0, weight_decay=args.wd, weight_decay_filter=exclude_bias_and_norm,
+                    lars_adaptation_filter=exclude_bias_and_norm
+                    )
+            else:
+                optimizer = LARS(
+                    model_parameters, lr=args.lr, weight_decay=args.wd, weight_decay_filter=exclude_bias_and_norm,
+                    lars_adaptation_filter=exclude_bias_and_norm
+                )
+    # Setup Loss
+    if args.method == "pair":
+        # TODO: Add pair loss criterion here. If the model return loss, then skip
+        if return_loss == False:
+            raise NotImplementedError("Criterion not found for pairs!")
+        else:
+            criterion_pairs = None
+    else:
+        raise NotImplementedError()
+    return optimizer, criterion_pairs
+
+class SSLGeoLocalizationNet(pl.LightningModule):
     """The used networks are composed of a backbone and an aggregation layer.
     """
-    def __init__(self, args):
+    def __init__(self, args, ds_list, batch_size = 2):
         super().__init__()
         self.backbone = get_backbone(args)
+        if args.disable_projector and not args.compress_fc:
+            if args.projection_size == -1:
+                if args.ssl_method == "byol" or args.ssl_method == "simsiam":
+                    args.features_dim = 2048
+                elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+                    args.features_dim = 8192
+                elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+                    args.features_dim = 2048
+                else:
+                    raise NotImplementedError()
+            else:
+                args.features_dim = args.projection_size
+            self.backbone, args.features_dim, args.projection_size = attach_compression_layer_conv(args, self.backbone, args.resize, args.features_dim, args.device)
+        else:
+            if args.projection_size == -1:
+                if args.ssl_method == "byol" or args.ssl_method == "simsiam":
+                    args.projection_size = 256
+                elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+                    args.projection_size = 8192
+                elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+                    args.projection_size = 128
+                else:
+                    raise NotImplementedError()
+        if args.n_layers==-1:
+            if args.ssl_method == "byol" or args.ssl_method == "simsiam":
+                args.n_layers = -1
+            elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+                args.n_layers = 3
+            elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+                args.n_layers = 2
+            else:
+                raise NotImplementedError()
+        self.args = args
         self.aggregation = get_aggregation(args)
+        if args.disable_projector and args.compress_fc:
+            self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.return_loss = False
-        self.ssl_method = args.ssl_method
-        self.model = self.get_ssl_model()
+        self.disable_projector = args.disable_projector
+        self.ssl_model = self.get_ssl_model()
+        self.train_ds, self.val_ds, self.test_ds = ds_list
+        self.all_features = None
+        self.lr = 0
+        self.batch_size = batch_size
+        self.freeze_backbone = False
+        self.freeze_param_list = []
 
     def get_ssl_model(self):
-        if self.ssl_method == "byol":
+        if self.args.ssl_method == "byol":
             self.return_loss = True
             return BYOL(self.backbone,
                         hidden_layer = -1,
-                        aggregation = self.aggregation)
-        if self.ssl_method == "simsiam":
-            self.return_loss = True
-            return BYOL(self.backbone,
-                        hidden_layer = -1,
+                        image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
+                        projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
-                        use_momentum=False)
+                        moving_average_decay = self.args.momentum,
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.n_layers)
+        elif self.args.ssl_method == "simsiam":
+            self.return_loss = True
+            return BYOL(self.backbone,
+                        hidden_layer = -1,
+                        image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
+                        projection_size = self.args.projection_size,
+                        aggregation = self.aggregation,
+                        use_momentum=False,
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.n_layers)
+        elif self.args.ssl_method == "vicreg":
+            self.return_loss = True
+            return VICREG(self.backbone,
+                        image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
+                        projection_size = self.args.projection_size,
+                        aggregation = self.aggregation,
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.n_layers)
+        elif self.args.ssl_method == "bt":
+            self.return_loss = True
+            return VICREG(self.backbone,
+                        image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
+                        projection_size = self.args.projection_size,
+                        aggregation = self.aggregation,
+                        use_bt_loss = True,
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.n_layers)
+        elif self.args.ssl_method == "mocov2":
+            self.return_loss = True
+            return MOCO(self.backbone,
+                        hidden_layer = -1,
+                        image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
+                        projection_size = self.args.projection_size,
+                        aggregation = self.aggregation,
+                        disable_projector = self.disable_projector,
+                        K = self.args.queue_size,
+                        n_layers = self.args.n_layers)
+        elif self.args.ssl_method == "simclr":
+            self.return_loss = True
+            return MOCO(self.backbone,
+                        hidden_layer = -1,
+                        image_size = self.args.resize,
+                        num_nodes = self.args.num_nodes,
+                        num_devices = self.args.num_devices,
+                        projection_size = self.args.projection_size,
+                        aggregation = self.aggregation,
+                        use_simclr = True,
+                        disable_projector = self.disable_projector,
+                        n_layers = self.args.n_layers)
         else:
             raise NotImplementedError()
 
-    def setup(self, args):
-        self.model = torch.nn.DataParallel(self.model)
-        self.model.to(args.device)
-        if torch.cuda.device_count() >= 2:
-            # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
-            self.model = convert_model(self.model)
-            self.model = self.model.to(args.device)
-
     def forward(self, x, pairs_local_indexes=None, return_feature=False):
         if return_feature:
-            if self.ssl_method == "byol":
-                feature = self.model(x, y=None, return_embedding=True, return_projection=False)
+            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt" or self.args.ssl_method == "mocov2" or self.args.ssl_method == "simclr":
+                feature = self.ssl_model(x, None, return_embedding=True, return_projection=False)
             else:
                 raise NotImplementedError()
             return feature
@@ -322,14 +585,249 @@ class SSLGeoLocalizationNet():
         y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):2].long()
         input_x = x[x_indexes]
         input_y = x[y_indexes]
+        if self.args.visualize_input:
+            visualize(input_x, "query")
+            visualize(input_y, "positive")
+            raise KeyError("Only visualize first batch. Comment this if you want more.")
         if self.return_loss:
-            loss = self.model(input_x, input_y).mean()
+            loss = self.ssl_model(input_x, input_y).mean()
             return loss
+        else:
+            raise NotImplementedError()
         
     def update(self):
-        if self.ssl_method == "byol":
-            self.model.module.update_moving_average()
-        elif self.ssl_method == "simsiam":
+        if self.args.ssl_method == "byol" or self.args.ssl_method == "mocov2":
+            self.ssl_model.update_moving_average()
+        elif self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt" or self.args.ssl_method == "simclr":
             pass
         else:
             raise NotImplementedError()
+    
+    def train_dataloader(self):
+        # Compute pairs to use in the pair loss
+        # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
+        self.train_ds.is_inference = True
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
+        self.train_ds.is_inference = False
+        pairs_dl = DataLoader(
+            dataset=self.train_ds,
+            num_workers=self.args.num_workers,
+            batch_size=self.batch_size,
+            collate_fn=datasets_ws.collate_fn,
+            pin_memory=True,
+            drop_last=True,
+            shuffle=True
+        )
+
+        return pairs_dl
+
+    def val_dataloader(self):
+        val_dataloader = DataLoader(
+            dataset=self.val_ds,
+            num_workers=self.args.num_workers,
+            batch_size=self.args.infer_batch_size,
+            pin_memory=True,
+            shuffle=False
+        )
+        return val_dataloader
+
+    def test_dataloader(self):
+        test_dataloader = DataLoader(
+            dataset=self.test_ds,
+            num_workers=self.args.num_workers,
+            batch_size=self.args.infer_batch_size,
+            pin_memory=True,
+            shuffle=True
+        )
+        return test_dataloader
+
+    def training_step(self, inputs, _):
+        if self.args.method == "pair":
+            images, pairs_local_indexes, _ = inputs
+            # Flip all pairs or none
+            if self.args.horizontal_flip:
+                images = transforms.RandomHorizontalFlip()(images)
+
+            # Compute features of all images (images contains queries, positives and negatives)
+            if self.criterion_pairs is None:
+                loss = self.forward(images, pairs_local_indexes)
+                loss_pairs = loss
+            else:
+                raise NotImplementedError('Unknown loss is used')
+                # features = model(images.to(args.device))
+                # loss_pairs = 0
+                # del features
+
+            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.batch_size, sync_dist=True)
+            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.batch_size, sync_dist=True)
+            return {"loss": loss_pairs}
+        else:
+            raise NotImplementedError()
+    
+    def _shared_on_eval_epoch_start(self, eval_ds, args):
+        if self.trainer.is_global_zero:
+            self.all_features = torch.empty((len(eval_ds), self.args.features_dim), dtype=torch.float32, device="cpu")
+
+    def _shared_eval_step(self, eval_ds, inputs):
+        images, indices = inputs
+        features = self.forward(images, return_feature=True)
+        features = self.all_gather(features)
+        indices = self.all_gather(indices)
+        if self.trainer.is_global_zero:
+            features = features.view(-1, features.size(-1))
+            indices = indices.view(-1)
+            self.all_features[indices.cpu(), :] = features.cpu()
+
+    def _shared_on_eval_epoch_end(self, eval_ds, args):
+        queries_features = self.all_features[eval_ds.database_num:]
+        database_features = self.all_features[: eval_ds.database_num]
+        queries_features = F.normalize(queries_features, dim=1)
+        database_features = F.normalize(database_features, dim=1)
+
+        # cos is equivalent to l2 if the vector is normalized
+        if args.matching == "l2":
+            faiss_index = faiss.IndexFlatL2(args.features_dim)
+        elif args.matching == "cos":
+            faiss_index = faiss.IndexFlatIP(args.features_dim)
+        faiss_index.add(database_features)
+        del database_features, self.all_features
+        self.all_features = None
+
+        logging.debug("Calculating recalls")
+        distances, predictions = faiss_index.search(
+            queries_features, max(args.recall_values)
+        )
+        # For each query, check if the predictions are correct
+        positives_per_query = eval_ds.get_positives()
+        # args.recall_values by default is [1, 5, 10, 20]
+        recalls = np.zeros(len(args.recall_values))
+        for query_index, pred in enumerate(predictions):
+            for i, n in enumerate(args.recall_values):
+                if np.any(np.in1d(pred[:n], positives_per_query[query_index])):
+                    recalls[i:] += 1
+                    break
+        # Divide by the number of queries*100, so the recalls are in percentages
+        recalls = recalls / eval_ds.queries_num * 100
+        recalls_str = ", ".join(
+            [f"R@{val}: {rec:.1f}" for val,
+                rec in zip(args.recall_values, recalls)]
+        )
+
+        return recalls, recalls_str
+
+    def on_validation_epoch_start(self):
+        self._shared_on_eval_epoch_start(self.val_ds, self.args)
+
+    def validation_step(self, inputs, _):
+        self._shared_eval_step(self.val_ds, inputs)
+
+    def on_validation_epoch_end(self):
+        if self.trainer.is_global_zero:
+            recalls, recalls_str = self._shared_on_eval_epoch_end(self.val_ds, self.args)
+            logging.debug(f"val_recall5:{recalls[1]}")
+            logging.debug(f"val_recall1:{recalls[0]}")
+        else:
+            recalls = np.zeros(len(self.args.recall_values))
+        self.trainer.strategy.barrier()
+        if self.trainer.num_devices == 1 and self.trainer.num_nodes == 1:
+            recalls = recalls
+        else:
+            recalls = self.all_gather(recalls)
+            recalls = recalls[0]
+        self.log("val_recall5", recalls[1], on_epoch=True, logger=True)
+        self.log("val_recall1", recalls[0], on_epoch=True, logger=True)
+        
+
+    def on_test_epoch_start(self):
+        self._shared_on_eval_epoch_start(self.test_ds, self.args)
+
+    def test_step(self, inputs, _):
+        self._shared_eval_step(self.test_ds, inputs)
+
+    def on_test_epoch_end(self):
+        if self.trainer.is_global_zero:
+            recalls, recalls_str = self._shared_on_eval_epoch_end(self.test_ds, self.args)
+            logging.debug(f"test_recall5:{recalls[1]}")
+            logging.debug(f"test_recall1:{recalls[0]}")
+        else:
+            recalls = np.zeros(len(self.args.recall_values))
+        self.trainer.strategy.barrier()
+        if self.trainer.num_devices == 1 and self.trainer.num_nodes == 1:
+            recalls = recalls
+        else:
+            recalls = self.all_gather(recalls)
+            recalls = recalls[0]
+        self.log("test_recall5", recalls[1], logger=True)
+        self.log("test_recall1", recalls[0], logger=True)
+
+    def configure_optimizers(self):
+        for param in self.backbone.parameters():
+            self.freeze_param_list.append(param.requires_grad)
+            param.requires_grad = False
+        self.freeze_backbone = True
+        optimizer, self.criterion_pairs = setup_optimizer_loss(self.args, filter(lambda p: p.requires_grad, self.ssl_model.parameters()), return_loss=True)
+        return optimizer
+
+    def on_before_zero_grad(self, _):
+        if self.args.cosine_scheduler:
+            self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step, self.batch_size, self.trainer.num_nodes, self.trainer.num_devices)
+        self.update()
+
+    def on_train_epoch_start(self):
+        self.train_ds.is_inference = True
+        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
+        self.train_ds.is_inference = False
+
+        if self.freeze_backbone and self.current_epoch > self.args.freeze_epoch_num:
+            for i, param in enumerate(self.backbone.parameters()):
+                param.requires_grad = self.freeze_param_list[i]
+            self.freeze_backbone = False
+            self.optimizers().add_param_group({'params': filter(lambda p: p.requires_grad, self.backbone.parameters())})
+            logging.debug("Adding backbone to the optimizer for unfreezing")
+
+    def setup(self, stage):
+        if stage == "validate":
+            self.initialize_flag = True
+            if self.args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
+                self.ssl_model.to(self.args.device)
+                self.ssl_model.device = self.args.device
+                if not self.args.resume:
+                    self.train_ds.is_inference = True
+                    if self.args.disable_projector and self.args.compress_fc:
+                        self.aggregation[0].initialize_netvlad_layer(
+                            self.args, self.train_ds, self.backbone)
+                        self.args.features_dim = self.args.projection_size
+                    else:
+                        self.aggregation.initialize_netvlad_layer(
+                            self.args, self.train_ds, self.backbone)
+                        self.args.features_dim *= self.args.netvlad_clusters
+                    self.train_ds.is_inference = False
+        elif stage == "fit":
+            if not hasattr(self, "initialize_flag"):
+                self.initialize_flag = True
+                if self.args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
+                    self.ssl_model.to(self.args.device)
+                    self.ssl_model.device = self.args.device
+                    if not self.args.resume:
+                        self.train_ds.is_inference = True
+                        if self.args.disable_projector and self.args.compress_fc:
+                            self.aggregation[0].initialize_netvlad_layer(
+                                self.args, self.train_ds, self.backbone)
+                            self.args.features_dim = self.args.projection_size
+                        else:
+                            self.aggregation.initialize_netvlad_layer(
+                                self.args, self.train_ds, self.backbone)
+                            self.args.features_dim *= self.args.netvlad_clusters
+                        self.train_ds.is_inference = False
+            self.ssl_model.to(self.args.device)
+            self.ssl_model.device = self.args.device
+
+    def optimizer_step(
+            self,
+            epoch,
+            batch_idx,
+            optimizer,
+            optimizer_closure,
+        ):
+        optimizer_closure()
+        optimizer.step()

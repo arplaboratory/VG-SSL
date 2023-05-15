@@ -2,23 +2,24 @@ import re
 import torch
 import shutil
 import logging
-import torchscan
 import numpy as np
 from collections import OrderedDict
 from os.path import join
 from sklearn.decomposition import PCA
+from tqdm import tqdm
 
 import datasets_ws
 
 
 def get_flops(model, input_shape=(480, 640)):
-    """Return the FLOPs as a string, such as '22.33 GFLOPs'"""
-    assert (
-        len(input_shape) == 2
-    ), f"input_shape should have len==2, but it's {input_shape}"
-    module_info = torchscan.crawl_module(model, (3, input_shape[0], input_shape[1]))
-    output = torchscan.utils.format_info(module_info)
-    return re.findall("Floating Point Operations on forward: (.*)\n", output)[0]
+    # """Return the FLOPs as a string, such as '22.33 GFLOPs'"""
+    # assert (
+    #     len(input_shape) == 2
+    # ), f"input_shape should have len==2, but it's {input_shape}"
+    # module_info = torchscan.crawl_module(model, (3, input_shape[0], input_shape[1]))
+    # output = torchscan.utils.format_info(module_info)
+    # return re.findall("Floating Point Operations on forward: (.*)\n", output)[0]
+    pass
 
 
 def save_checkpoint(args, state, is_best, filename):
@@ -45,6 +46,15 @@ def resume_model(args, model):
     model.load_state_dict(state_dict)
     return model
 
+def resume_model_ssl(args, model):
+    model = resume_model_ssl_single(args, model)
+    return model
+
+def resume_model_ssl_single(args, model):
+    checkpoint = torch.load(args.resume, map_location=args.device)
+    state_dict = checkpoint["state_dict"]
+    model.load_state_dict(state_dict, strict=False)
+    return model
 
 def resume_train(args, model, optimizer=None, strict=False):
     """Load model, optimizer, and other training parameters"""
@@ -71,8 +81,7 @@ def resume_train_ssl(args, model, optimizer=None, strict=False):
     logging.debug(f"Loading checkpoint: {args.resume}")
     checkpoint = torch.load(args.resume)
     start_epoch_num = checkpoint["epoch_num"]
-    model.backbone.load_state_dict(checkpoint["model_backbone_state_dict"], strict=strict)
-    model.aggregation.load_state_dict(checkpoint["model_aggregation_state_dict"], strict=strict)
+    model.ssl_model.load_state_dict(checkpoint["model_ssl_state_dict"], strict=strict)
     if optimizer:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     best_r5 = checkpoint["best_r5"]
@@ -87,18 +96,21 @@ def resume_train_ssl(args, model, optimizer=None, strict=False):
         )
     return model, optimizer, best_r5, start_epoch_num, not_improved_num
 
-def compute_pca(args, model, pca_dataset_folder, full_features_dim):
+def compute_pca(args, model, full_features_dim):
     model = model.eval()
-    pca_ds = datasets_ws.PCADataset(args, args.datasets_folder, pca_dataset_folder)
-    dl = torch.utils.data.DataLoader(pca_ds, args.infer_batch_size, shuffle=True)
+    pca_ds = datasets_ws.PCADataset(
+        args, args.datasets_folder, args.pca_dataset_folder)
+    dl = torch.utils.data.DataLoader(
+        pca_ds, args.infer_batch_size, shuffle=True)
     pca_features = np.empty([min(len(pca_ds), 2**14), full_features_dim])
+    logging.info("Computing PCA")
     with torch.no_grad():
-        for i, images in enumerate(dl):
+        for i, images in tqdm(enumerate(dl), ncols=100):
             if i * args.infer_batch_size >= len(pca_features):
                 break
             features = model(images).cpu().numpy()
             pca_features[
-                i * args.infer_batch_size : (i * args.infer_batch_size) + len(features)
+                i * args.infer_batch_size: (i * args.infer_batch_size) + len(features)
             ] = features
     pca = PCA(args.pca_dim)
     pca.fit(pca_features)

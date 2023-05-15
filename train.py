@@ -25,6 +25,8 @@ torch.backends.cudnn.benchmark = True  # Provides a speedup
 
 # Initial setup: parser, logging...
 args = parser.parse_arguments()
+if args.ssl_method != "none":
+    raise ValueError("Training with triplets should set ssl_method to none")
 start_time = datetime.now()
 args.save_dir = join(
     "logs",
@@ -116,6 +118,8 @@ else:
         optimizer = torch.optim.SGD(
             model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
         )
+    else:
+        raise NotImplementedError()
 
 if args.method == "triplet":
     if args.criterion == "triplet":
@@ -152,18 +156,23 @@ if args.resume:
 else:
     best_r5 = start_epoch_num = not_improved_num = 0
 
-if args.backbone.startswith("vit"):
-    logging.info(f"Output dimension of the model is {args.features_dim}")
-else:
-    logging.info(
-        f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
-    )
+# if args.backbone.startswith("vit"):
+#     logging.info(f"Output dimension of the model is {args.features_dim}")
+# else:
+#     logging.info(
+#         f"Output dimension of the model is {args.features_dim}, with {util.get_flops(model, args.resize)}"
+#     )
 
 
 if torch.cuda.device_count() >= 2:
     # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
     model = convert_model(model)
     model = model.cuda()
+
+# First val loop for sanity check
+# Compute recalls on validation set
+# recalls, recalls_str = test.test(args, val_ds, model)
+# logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
 
 # Training loop
 for epoch_num in range(start_epoch_num, args.epochs_num):
@@ -196,7 +205,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         if args.use_faiss_gpu:
             torch.cuda.empty_cache()
 
-        model = model.train()
+        model.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
         # triplets_local_indexes shape: (train_batch_size*10)*3 ; because 10 triplets per query
