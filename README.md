@@ -43,7 +43,12 @@ VPR_SSL/datasets
 ```
 
 ### Training
-Our training scripts are used to submit to slurm system. To run the scripts locally, you need to change the suffix from "sbatch" to 
+Our training scripts are used to submit to slurm system. To run the scripts locally, you need to change the following things: 
+#### Remove srun
+Remove the srun
+#### Export the environment variables
+You need to export the environment variables. For example, when you see ```sbatch --export=ALL,SSL=byol,SEED=0,LR=1e-4,BATCH=64,PROJ=2048,LAY=2,NEG=1.0 ...```, you need to run ```export SSL=byol SEED=0 LR=1e-4 BATCH=64 PROJ=2048 LAY=2 NEG=1.0```.
+#### Remove sbatch
 To run baseline experiment, run the following command:
 
 
