@@ -119,10 +119,16 @@ After evaluation, you can find the **model_folder_name** in the **test/default**
 
 ## Acknowledgement
 The VG framework is inspired by https://github.com/gmberton/deep-visual-geo-localization-benchmark.
+
 The implementation of SSL methods refers to the following repos:
+
 https://github.com/google-research/simclr
+
 https://github.com/facebookresearch/moco
+
 https://github.com/lucidrains/byol-pytorch
+
 https://github.com/facebookresearch/barlowtwins
+
 https://github.com/facebookresearch/vicreg
 
