@@ -269,7 +269,7 @@ class PCADataset(BaseDataset):
         else:
             img = self._test_query_transform(img)
         return img
-        
+
 class TripletsDataset(BaseDataset):
     """Dataset used for training, it is used to compute the triplets
     with TripletsDataset.compute_triplets() with various mining methods.

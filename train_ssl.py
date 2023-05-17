@@ -98,6 +98,7 @@ def main():
         check_val_every_n_epoch = 10,
         num_sanity_val_steps = 0
     )
+    logging.debug(model)
     if trainer.is_global_zero:
         wandb_logger.experiment.config.update(vars(args))
     trainer.validate(model)
