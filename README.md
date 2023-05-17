@@ -16,7 +16,7 @@ transform_dataset.sh
 ```
 The datasets should be organized like this:
 ```
-VPR_SSL/datasets
+VG_SSL/datasets
 ├── eynsham
 │   ├── test_database.h5
 │   └── test_queries.h5

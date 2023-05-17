@@ -9,7 +9,7 @@
 #SBATCH --output=eval_ssl.out
 
 eval "$(conda shell.bash hook)"
-conda activate VPR_SSL
+conda activate VG_SSL
 
 if [ ${SLURM_ARRAY_TASK_ID} == 1 ]
 then

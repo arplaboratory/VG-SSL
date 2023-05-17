@@ -9,6 +9,6 @@
 #SBATCH --output=train_msls_ssl.out
 
 eval "$(conda shell.bash hook)"
-conda activate VPR_SSL
+conda activate VG_SSL
 
 srun python3 train_ssl.py --dataset_name=msls --mining random --datasets_folder=./datasets --epochs_num 1000 --seed $SEED --ssl_method $SSL --method pair --backbone resnet50conv4 --lr $LR --optim adam --train_batch_size $BATCH --infer_batch_size 64 --use_best_positive --disable_bn --disable_projector --projection_size $PROJ --num_workers 16 --database_negatives_ratio 1.0 --compress_fc --n_layers $LAY
