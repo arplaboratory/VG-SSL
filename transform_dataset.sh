@@ -1,6 +1,6 @@
 #!/bin/bash
 eval "$(conda shell.bash hook)"
-conda activate VPR_SSL
+conda activate VG_SSL
 
 # eynsham
 python h5_transformer.py --read_path ~/datasets_vg/datasets/eynsham/images/test/database --save_path  ~/datasets_vg/datasets/eynsham/database.h5 --compress &
