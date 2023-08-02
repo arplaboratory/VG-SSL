@@ -11,4 +11,4 @@
 eval "$(conda shell.bash hook)"
 conda activate VG_SSL
 
-srun python3 train_ssl.py --dataset_name=msls --mining random --datasets_folder=./datasets --epochs_num 1000 --seed $SEED --ssl_method $SSL --method pair --backbone resnet50conv4 --lr $LR --optim adam --train_batch_size $BATCH --infer_batch_size 64 --use_best_positive --disable_bn --disable_projector --projection_size $PROJ --num_workers 24 --database_negatives_ratio 0.25 --compress_fc --n_layers $LAY
+srun python3 train_ssl.py --dataset_name=msls --mining random --datasets_folder=./datasets --epochs_num 1000 --seed $SEED --ssl_method $SSL --method pair --backbone resnet50conv4 --lr $LR --optim adam --train_batch_size $BATCH --infer_batch_size 64 --use_best_positive --projection_size $PROJ --num_workers 24 --database_negatives_ratio 0.25 --n_layers $LAY
