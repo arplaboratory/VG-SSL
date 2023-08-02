@@ -9,6 +9,8 @@ def parse_arguments():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # Training parameters
+    parser.add_argument('--schedule', default=[60, 80], nargs='*', type=int,
+                    help='learning rate schedule (when to drop lr by 10x)')
     parser.add_argument(
         "--remove_norm",
         action="store_true",
