@@ -207,7 +207,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
         # triplets_local_indexes shape: (train_batch_size*10)*3 ; because 10 triplets per query
         if args.method == "triplet":
-            for images, triplets_local_indexes, _ in tqdm(triplets_dl, ncols=100):
+            for images, triplets_local_indexes, _, _ in tqdm(triplets_dl, ncols=100):
 
                 # Flip all triplets or none
                 if args.horizontal_flip:
