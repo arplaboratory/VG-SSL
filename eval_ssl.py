@@ -34,7 +34,7 @@ logging.debug(model)
 model = model.to(args.device)
 
 if args.aggregation in ["netvlad", "crn"]:
-    if args.projection_size != -1 and args.compress_fc:
+    if args.n_layer != 0:
         args.features_dim = args.projection_size
     else:
         args.features_dim *= args.netvlad_clusters

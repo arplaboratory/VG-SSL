@@ -275,18 +275,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     queries_features = all_features[eval_ds.database_num:]
     database_features = all_features[: eval_ds.database_num]
 
-    if args.use_faiss_gpu:
-        torch.cuda.empty_cache()
-        res = faiss.StandardGpuResources()
-        if args.matching == "l2":
-            faiss_index = faiss.GpuIndexFlatL2(res, args.features_dim)
-        elif args.matching == "cos":
-            faiss_index = faiss.GpuIndexFlatIP(res, args.features_dim)
-    else:
-        if args.matching == "l2":
-            faiss_index = faiss.IndexFlatL2(args.features_dim)
-        elif args.matching == "cos":
-            faiss_index = faiss.IndexFlatIP(args.features_dim)
+    faiss_index = faiss.IndexFlatL2(args.features_dim)
     faiss_index.add(database_features)
     del database_features, all_features
 

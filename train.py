@@ -202,9 +202,6 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         else:
             raise NotImplementedError()
 
-        if args.use_faiss_gpu:
-            torch.cuda.empty_cache()
-
         model.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
