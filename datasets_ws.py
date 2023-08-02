@@ -41,7 +41,7 @@ def path_to_pil_img(path):
 
 
 def collate_fn(batch):
-    """Creates mini-batch tensors from the list of tuples (images,
+    """Creates mini-batch tensors from the list of tuples (images, 
         triplets_local_indexes, triplets_global_indexes).
         triplets_local_indexes are the indexes referring to each triplet within images.
         triplets_global_indexes are the global indexes of each image.
@@ -56,16 +56,13 @@ def collate_fn(batch):
         triplets_local_indexes: torch tensor of shape (batch_size*10, 3).
         triplets_global_indexes: torch tensor of shape (batch_size, 12).
     """
-    images = torch.cat([e[0] for e in batch])
-    triplets_local_indexes = torch.cat([e[1][None] for e in batch])
+    images                  = torch.cat([e[0] for e in batch])
+    triplets_local_indexes  = torch.cat([e[1][None] for e in batch])
     triplets_global_indexes = torch.cat([e[2][None] for e in batch])
-    for i, (local_indexes, global_indexes) in enumerate(
-        zip(triplets_local_indexes, triplets_global_indexes)
-    ):
-        local_indexes += (
-            len(global_indexes) * i
-        )  # Increment local indexes by offset (len(global_indexes) is 12)
-    return images, torch.cat(tuple(triplets_local_indexes)), triplets_global_indexes
+    utms = torch.cat([e[3] for e in batch], dim=0)
+    for i, (local_indexes, global_indexes) in enumerate(zip(triplets_local_indexes, triplets_global_indexes)):
+        local_indexes += len(global_indexes) * i  # Increment local indexes by offset (len(global_indexes) is 12)
+    return images, torch.cat(tuple(triplets_local_indexes)), triplets_global_indexes, utms
 
 class PCADataset(data.Dataset):
     def __init__(self, args, datasets_folder="dataset", dataset_folder="pitts30k/images/train"):
