@@ -389,7 +389,6 @@ def visualize(image_tensor, name):
         img.save(f"vis/{name}_{i}.png")
 
 def setup_optimizer_loss(args, model_parameters, return_loss=True):
-    # Setup Optimizer
     # Setup Optimizer and Loss
     if args.aggregation == "crn":
         raise NotImplementedError()
@@ -416,34 +415,9 @@ def setup_optimizer_loss(args, model_parameters, return_loss=True):
 class SSLGeoLocalizationNet(pl.LightningModule):
     """The used networks are composed of a backbone and an aggregation layer.
     """
-    def __init__(self, args, ds_list, batch_size = 2):
+    def __init__(self, args, ds_list):
         super().__init__()
         self.backbone = get_backbone(args)
-        if args.n_layer != 0:
-            if args.projection_size == 0:
-                raise NotImplementedError()
-            else:
-                args.features_dim = args.projection_size
-            self.backbone, args.features_dim, args.projection_size = attach_compression_layer_conv(args, self.backbone, args.resize, args.features_dim, args.device)
-        else:
-            if args.projection_size == -1:
-                if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                    args.projection_size = 256
-                elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-                    args.projection_size = 8192
-                elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                    args.projection_size = 128
-                else:
-                    raise NotImplementedError()
-        if args.n_layers==-1:
-            if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                args.n_layers = -1
-            elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-                args.n_layers = 3
-            elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                args.n_layers = 2
-            else:
-                raise NotImplementedError()
         self.args = args
         self.aggregation = get_aggregation(args)
         if self.args.n_layer != 0:
@@ -454,9 +428,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.train_ds, self.val_ds, self.test_ds = ds_list
         self.all_features = None
         self.lr = 0
-        self.batch_size = batch_size
-        self.freeze_backbone = False
-        self.freeze_param_list = []
 
     def get_ssl_model(self):
         if self.args.ssl_method == "byol":
@@ -559,7 +530,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         pairs_dl = DataLoader(
             dataset=self.train_ds,
             num_workers=self.args.num_workers,
-            batch_size=self.batch_size,
+            batch_size=self.args.train_batch_size,
             collate_fn=datasets_ws.collate_fn,
             pin_memory=True,
             drop_last=True,
@@ -605,8 +576,8 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 # loss_pairs = 0
                 # del features
 
-            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.batch_size, sync_dist=True)
-            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.batch_size, sync_dist=True)
+            self.log("loss", loss_pairs, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, sync_dist=True)
+            self.log("current_lr", self.lr, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.train_batch_size, sync_dist=True)
             return {"loss": loss_pairs}
         else:
             raise NotImplementedError()

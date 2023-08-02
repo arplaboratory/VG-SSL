@@ -219,7 +219,7 @@ class TripletsDataset(BaseDataset):
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
         self.mining = args.mining
-        self.neg_samples_num = args.neg_samples_num# Number of negatives to randomly sample
+        self.neg_samples_num = args.neg_samples_num # Number of negatives to randomly sample
         self.negs_num_per_query = negs_num_per_query  # Number of negatives per query in each batch
         if self.mining == "full":  # "Full database mining" keeps a cache with last used negatives
             self.neg_cache = [np.empty((0,), dtype=np.int32) for _ in range(self.queries_num)]
