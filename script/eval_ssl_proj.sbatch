@@ -37,5 +37,5 @@ then
 fi
 if [ ${SLURM_ARRAY_TASK_ID} == 7 ]
 then
-    python3 eval_ssl.py --resume='logs/default/'$1'/best_model.pth' --dataset_name=eynsham --datasets_folder ~/VG_SSL/datasets --backbone $2 --projection_size $3 --ssl_method $4 --n_layers $5
+    python3 eval_ssl.py --resume='logs/default/'$1'/best_model.pth' --dataset_name eynsham --datasets_folder ~/VG_SSL/datasets --backbone $2 --projection_size $3 --ssl_method $4 --n_layers $5
 fi

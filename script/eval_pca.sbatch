@@ -37,5 +37,5 @@ then
 fi
 if [ ${SLURM_ARRAY_TASK_ID} == 7 ]
 then
-    python3 eval.py --resume='logs/default/'$1'/best_model.pth' --dataset_name=eynsham --datasets_folder ~/VG_SSL/datasets --backbone $2 --pca_dim $3 --pca_dataset_folder msls
+    python3 eval.py --resume='logs/default/'$1'/best_model.pth' --dataset_name eynsham --datasets_folder ~/VG_SSL/datasets --backbone $2 --pca_dim $3 --pca_dataset_folder msls
 fi
