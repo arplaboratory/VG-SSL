@@ -13,7 +13,6 @@ import torchvision.transforms as transforms
 from torch.utils.data.dataset import Subset
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.data.dataloader import DataLoader
-import h5py
 import random
 from PIL import ImageOps, ImageFilter
 from torchvision.transforms import InterpolationMode
@@ -88,8 +87,13 @@ class BaseDataset(data.Dataset):
         super().__init__()
         self.args = args
         self.dataset_name = dataset_name
-        # self.dataset_folder = join(datasets_folder, dataset_name, "images", split)
-        # if not os.path.exists(self.dataset_folder): raise FileNotFoundError(f"Folder {self.dataset_folder} does not exist")
+        if dataset_name == 'msls':
+            self.dataset_folder = join(datasets_folder, dataset_name)
+        else:
+            self.dataset_folder = join(datasets_folder, dataset_name, "images", split)
+
+        if not os.path.exists(self.dataset_folder): raise FileNotFoundError(
+            f"Folder {self.dataset_folder} does not exist")
 
         self.resize = args.resize
         self.test_method = args.test_method
@@ -606,7 +610,7 @@ class RAMEfficient2DMatrix:
             return self.matrix[index]
 
 
-class PairsDataset(BaseDataset):
+class PairsDataset(TripletsDataset):
     """Dataset used for training, it is used to compute the pairs
     for SSL training.
     If is_inference == True, uses methods of the parent class BaseDataset.
@@ -621,54 +625,12 @@ class PairsDataset(BaseDataset):
     
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
-        self.mining = args.mining
         self.database_negatives_ratio = args.database_negatives_ratio
-        self.queries_per_epoch = args.queries_per_epoch
-        self.is_inference = False
-
         self.epsilon = args.aug_epsilon
+        self.queries_per_epoch = args.queries_per_epoch
 
         if self.epsilon < 0.0 or self.epsilon > 1.0:
             raise ValueError('epsilon value should in range of 0 to 1')
-
-        identity_transform = transforms.Lambda(lambda x: x)
-        self.resized_transform = transforms.Compose(
-            [
-                transforms.Resize(self.resize)
-                if self.resize is not None
-                else identity_transform,
-                base_transform,
-            ]
-        )
-
-        self.query_transform = transforms.Compose(
-            [
-                transforms.ColorJitter(brightness=args.brightness)
-                if args.brightness != None
-                else identity_transform,
-                transforms.ColorJitter(contrast=args.contrast)
-                if args.contrast != None
-                else identity_transform,
-                transforms.ColorJitter(saturation=args.saturation)
-                if args.saturation != None
-                else identity_transform,
-                transforms.ColorJitter(hue=args.hue)
-                if args.hue != None
-                else identity_transform,
-                transforms.RandomPerspective(args.rand_perspective)
-                if args.rand_perspective != None
-                else identity_transform,
-                transforms.RandomResizedCrop(
-                    size=self.resize, scale=(1 - args.random_resized_crop, 1)
-                )
-                if args.random_resized_crop != None
-                else identity_transform,
-                transforms.RandomRotation(degrees=args.random_rotation)
-                if args.random_rotation != None
-                else identity_transform,
-                self.resized_transform,
-            ]
-        )
 
         self.aug_transform = transforms.Compose(
             [
@@ -686,80 +648,23 @@ class PairsDataset(BaseDataset):
             ]
         )
 
-        if args.use_database_aug:
-            self.database_transform = self.query_transform
-        else:
-            self.database_transform = self.resized_transform
-
-        # Find hard_positives_per_query, which are within train_positives_dist_threshold (10 meters)
-        knn = NearestNeighbors(n_jobs=-1)
-        knn.fit(self.database_utms)
-        self.hard_positives_per_query = list(
-            knn.radius_neighbors(
-                self.queries_utms,
-                radius=args.train_positives_dist_threshold,  # 10 meters
-                return_distance=False,
-            )
-        )
-
-        # Some queries might have no positive, we should remove those queries.
-        queries_without_any_hard_positive = np.where(
-            np.array([len(p)
-                     for p in self.hard_positives_per_query], dtype=object) == 0
-        )[0]
-        if len(queries_without_any_hard_positive) != 0:
-            logging.info(
-                f"There are {len(queries_without_any_hard_positive)} queries without any positives "
-                + "within the training set. They won't be considered as they're useless for training."
-            )
-        # Remove queries without positives
-        self.hard_positives_per_query = np.delete(
-            self.hard_positives_per_query, queries_without_any_hard_positive
-        )
-        self.queries_paths = np.delete(
-            self.queries_paths, queries_without_any_hard_positive
-        )
-
-        # Recompute images_paths and queries_num because some queries might have been removed
-        self.images_paths = list(self.database_paths) + \
-            list(self.queries_paths)
-        self.queries_num = len(self.queries_paths)
-
     def __getitem__(self, index):
         if self.is_inference:
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
             return super().__getitem__(index)
 
-       
-        # Init
-        if self.database_folder_h5_df is None:
-            self.database_folder_h5_df = h5py.File(
-                self.database_folder_h5_path, "r")
-            self.queries_folder_h5_df = h5py.File(
-                self.queries_folder_h5_path, "r")
-
-        query_index, best_positive_index = torch.split(
-            self.pairs_global_indexes[index], (1, 1)
-        )
-
+        query_index, best_positive_index = torch.split(self.pairs_global_indexes[index], (1, 1))
         if index >= self.queries_per_epoch:
-            img = self._find_img_in_h5(query_index, "database") # Database negatives
+            query     = self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
+            positive  = self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
         else:
-            img = self._find_img_in_h5(query_index, "queries")
-
-        query = self.query_transform(img)
-
-        epi = random.uniform(0, 1)
-        if self.epsilon <= epi:
-            positive = self.database_transform(
-                self._find_img_in_h5(best_positive_index, "database")
-            )
-        else: 
-            positive = self.aug_transform(img)
-    
+            query     = self.query_transform(path_to_pil_img(self.database_paths[query_index]))
+            positive  = self.resized_transform(path_to_pil_img(self.database_paths[query_index]))
         images = torch.stack((query, positive), 0)
+        utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
+                         torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0)), dim=0)
         pairs_local_indexes = torch.tensor([0, 1], dtype=torch.int)
-        return images, pairs_local_indexes, self.pairs_global_indexes[index]
+        return images, pairs_local_indexes, self.pairs_global_indexes[index], utm
 
     def __len__(self):
         if self.is_inference:
