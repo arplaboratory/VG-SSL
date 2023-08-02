@@ -15,20 +15,9 @@ def parse_arguments():
         help="Remove norm for vicreg and bt?"
     )
     parser.add_argument(
-        "--compress_fc",
-        action="store_true",
-        help="Compress fc"
-    )
-    parser.add_argument(
-        "--freeze_epoch_num",
-        type=int,
-        default=-1,
-        help="Before this epoch num, Backbone is frozen"
-    )
-    parser.add_argument(
         "--n_layers",
         type=int,
-        default=-1,
+        default=0,
         help="Projector layer num"
     )
     parser.add_argument(
@@ -61,39 +50,10 @@ def parse_arguments():
         default=0,
         help="the portion of self augmented image"
     )
-
-    parser.add_argument(
-        "--use_best_positive",
-        action="store_true",
-        help="Use best positive in feature space"
-    )
     parser.add_argument(
         "--visualize_input",
         action="store_true",
         help="Visualize input for SSL learning"
-    )
-    parser.add_argument(
-        "--disable_bn",
-        action="store_true",
-        help="Disable bn in compression layer"
-    )
-    parser.add_argument(
-        "--matching",
-        type=str,
-        default="l2",
-        choices=["l2", "cos"],
-        help="Matching based on Euclidian (l2) distance or cosine similarity"
-    )
-    parser.add_argument(
-        "--wd",
-        type=float,
-        default=1e-6,
-        help="Weight decay"
-    )
-    parser.add_argument(
-        "--disable_projector",
-        action="store_true",
-        help="Choose if we disable projector for ssl training"
     )
     parser.add_argument(
         "--cosine_scheduler",
@@ -104,7 +64,7 @@ def parse_arguments():
         "--ssl_method",
         type=str,
         default='none',
-        choices=["none", "byol", "simclr", "simsiam", "vicreg", "vicreg_no_proj", "bt", "mocov2"],
+        choices=["none", "byol", "simclr", "simsiam", "vicreg", "bt", "mocov2"],
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
@@ -115,14 +75,9 @@ def parse_arguments():
         help="Choose to use triplet or pair"
     )
     parser.add_argument(
-        "--use_faiss_gpu",
-        action="store_true",
-        help="Choose if we use faiss gpu version for mining. Only work for full and partial."
-    )
-    parser.add_argument(
         "--use_database_aug",
         action="store_true",
-        help="Choose if we use use_database_aug."
+        help="Choose if we use use_database_aug only for SSL training."
     )
     parser.add_argument(
         "--train_batch_size",
@@ -151,6 +106,7 @@ def parse_arguments():
     )
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.00001, help="_")
+    parser.add_argument("--warmup", type=int, default=-1, help=" ")
     parser.add_argument(
         "--lr_crn_layer",
         type=float,
@@ -164,7 +120,7 @@ def parse_arguments():
         help="Learning rate to finetune pretrained network when using CRN",
     )
     parser.add_argument(
-        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd", "lars"]
+        "--optim", type=str, default="adam", help="_", choices=["adam", "sgd", "adamw"]
     )
     parser.add_argument(
         "--cache_refresh_rate",
@@ -190,12 +146,15 @@ def parse_arguments():
         default=1000,
         help="How many negatives to use to compute the hardest ones",
     )
-    parser.add_argument(
-        "--mining",
-        type=str,
-        default="partial",
-        choices=["partial", "full", "random", "msls_weighted"],
-    )
+    parser.add_argument("--neg_hardness", type=int, default=10,
+                    help="How many top negatives to be sampled from")
+    parser.add_argument("--num_pairs", type=int, default=5,
+                        help="How many pairs to be sampled from")
+    parser.add_argument("--local_dim", type=int, default=128,
+                        help="local feature dimension")
+    parser.add_argument("--num_local", type=int, default=500,
+                        help="number of local features")
+    parser.add_argument("--mining", type=str, default="partial", choices=["partial", "full", "random", "msls_weighted", 'global', 'global_combine'])
     # Model parameters
     parser.add_argument(
         "--backbone",
@@ -428,12 +387,6 @@ def parse_arguments():
 
     if args.pca_dim != None and args.pca_dataset_folder == None:
         raise ValueError("Please specify --pca_dataset_folder when using pca")
-
-    if args.disable_projector and args.ssl_method == "none":
-        raise ValueError("Disabling projectors must be with ssl training")
-
-    if args.matching == "cos" and args.ssl_method == "triplet":
-        raise NotImplementedError("Cosine distance is not implemented for triplet training")
 
     return args
     
