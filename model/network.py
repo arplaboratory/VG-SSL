@@ -57,11 +57,9 @@ class GeoLocalizationNet(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.backbone = get_backbone(args)
-        if args.projection_size != -1 and not args.compress_fc:
-            self.backbone, args.features_dim, args.projection_size = attach_compression_layer_conv(args, self.backbone, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
-        if args.projection_size != -1 and args.compress_fc:
+        if args.n_layer != 0:
              self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
         self.self_att = False
 
@@ -309,22 +307,7 @@ def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
-def attach_compression_layer_conv(args, backbone, image_size, projection_size, device):
-    rand_x = torch.randn(2, 3, image_size[0], image_size[1])
-    backbone.eval()
-    representation_before_agg = backbone(rand_x)
-    backbone.train()
-    _, dim, _, _ = representation_before_agg.shape
-    effective_projection_size = int(projection_size / args.netvlad_clusters)
-    conv_layer = nn.Sequential(nn.Conv2d(dim, effective_projection_size, 1, bias=False if not args.disable_bn else True),
-                               nn.BatchNorm2d(effective_projection_size) if not args.disable_bn else nn.Identity())
-    backbone = nn.Sequential(
-        backbone,
-        conv_layer
-    )
-    return backbone, effective_projection_size, projection_size
-
-def attach_compression_layer_fc(args, backbone, aggregation, image_size, projection_size, device):
+def attach_compression_layer_fc(args, backbone, aggregation, image_size, projection_size):
     rand_x = torch.randn(2, 3, image_size[0], image_size[1])
     backbone.eval()
     aggregation.eval()
@@ -424,17 +407,6 @@ def setup_optimizer_loss(args, model_parameters, return_loss=True):
                 optimizer = torch.optim.SGD(
                     model_parameters, lr=args.lr, momentum=0.9, weight_decay=args.wd
                 )
-        elif args.optim == "lars":
-            if args.cosine_scheduler:
-                optimizer = LARS(
-                    model_parameters, lr=0, weight_decay=args.wd, weight_decay_filter=exclude_bias_and_norm,
-                    lars_adaptation_filter=exclude_bias_and_norm
-                    )
-            else:
-                optimizer = LARS(
-                    model_parameters, lr=args.lr, weight_decay=args.wd, weight_decay_filter=exclude_bias_and_norm,
-                    lars_adaptation_filter=exclude_bias_and_norm
-                )
     # Setup Loss
     if args.method == "pair":
         # TODO: Add pair loss criterion here. If the model return loss, then skip
@@ -452,16 +424,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def __init__(self, args, ds_list, batch_size = 2):
         super().__init__()
         self.backbone = get_backbone(args)
-        if args.disable_projector and not args.compress_fc:
-            if args.projection_size == -1:
-                if args.ssl_method == "byol" or args.ssl_method == "simsiam":
-                    args.features_dim = 2048
-                elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-                    args.features_dim = 8192
-                elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-                    args.features_dim = 2048
-                else:
-                    raise NotImplementedError()
+        if args.n_layer != 0:
+            if args.projection_size == 0:
+                raise NotImplementedError()
             else:
                 args.features_dim = args.projection_size
             self.backbone, args.features_dim, args.projection_size = attach_compression_layer_conv(args, self.backbone, args.resize, args.features_dim, args.device)
@@ -486,11 +451,10 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 raise NotImplementedError()
         self.args = args
         self.aggregation = get_aggregation(args)
-        if args.disable_projector and args.compress_fc:
+        if self.args.n_layer != 0:
             self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
         self.arch_name = args.backbone
         self.return_loss = False
-        self.disable_projector = args.disable_projector
         self.ssl_model = self.get_ssl_model()
         self.train_ds, self.val_ds, self.test_ds = ds_list
         self.all_features = None
@@ -510,7 +474,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         moving_average_decay = self.args.momentum,
-                        disable_projector = self.disable_projector,
                         n_layers = self.args.n_layers)
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
@@ -522,7 +485,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_momentum=False,
-                        disable_projector = self.disable_projector,
                         n_layers = self.args.n_layers)
         elif self.args.ssl_method == "vicreg":
             self.return_loss = True
@@ -532,7 +494,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector,
                         n_layers = self.args.n_layers)
         elif self.args.ssl_method == "bt":
             self.return_loss = True
@@ -543,7 +504,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
-                        disable_projector = self.disable_projector,
                         n_layers = self.args.n_layers)
         elif self.args.ssl_method == "mocov2":
             self.return_loss = True
@@ -554,7 +514,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         num_devices = self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
-                        disable_projector = self.disable_projector,
                         K = self.args.queue_size,
                         n_layers = self.args.n_layers)
         elif self.args.ssl_method == "simclr":
@@ -567,7 +526,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_simclr = True,
-                        disable_projector = self.disable_projector,
                         n_layers = self.args.n_layers)
         else:
             raise NotImplementedError()
@@ -684,11 +642,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         queries_features = F.normalize(queries_features, dim=1)
         database_features = F.normalize(database_features, dim=1)
 
-        # cos is equivalent to l2 if the vector is normalized
-        if args.matching == "l2":
-            faiss_index = faiss.IndexFlatL2(args.features_dim)
-        elif args.matching == "cos":
-            faiss_index = faiss.IndexFlatIP(args.features_dim)
+        faiss_index = faiss.IndexFlatL2(args.features_dim)
         faiss_index.add(database_features)
         del database_features, self.all_features
         self.all_features = None
@@ -793,7 +747,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                 self.ssl_model.device = self.args.device
                 if not self.args.resume:
                     self.train_ds.is_inference = True
-                    if self.args.disable_projector and self.args.compress_fc:
+                    if self.args.n_layer != 0:
                         self.aggregation[0].initialize_netvlad_layer(
                             self.args, self.train_ds, self.backbone)
                         self.args.features_dim = self.args.projection_size
@@ -810,7 +764,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                     self.ssl_model.device = self.args.device
                     if not self.args.resume:
                         self.train_ds.is_inference = True
-                        if self.args.disable_projector and self.args.compress_fc:
+                        if self.args.n_layer != 0:
                             self.aggregation[0].initialize_netvlad_layer(
                                 self.args, self.train_ds, self.backbone)
                             self.args.features_dim = self.args.projection_size

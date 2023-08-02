@@ -64,14 +64,12 @@ class VICREG(nn.Module):
         lambd = 0.0051,
         n_layers = 3,
         aggregation = None,
-        disable_projector = False,
     ):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
         self.num_nodes = num_nodes
         self.num_devices = num_devices
-        self.disable_projector = disable_projector
         # Augmentation is finished outside
 
         self.use_bt_loss = use_bt_loss
@@ -122,15 +120,8 @@ class VICREG(nn.Module):
         y = self.aggregation(y)
 
         if self.projector is None:
-            if not self.disable_projector:
-                self.projector = self._get_projector(x)
-            else:
-                self.projector = nn.Identity()
+            self.projector = nn.Identity()
             return
-
-        if not self.disable_projector:
-            x = self.projector(x)
-            y = self.projector(y)
 
         if not self.use_bt_loss:
             # Use vicreg loss

@@ -6,24 +6,23 @@ import math
 def exclude_bias_and_norm(p):
     return p.ndim == 1
 
-def adjust_learning_rate(args, optimizer, global_step, batch_size, num_nodes, num_devices):
-    queries_per_step = batch_size * num_nodes * num_devices # batch size is local and need to make it global
-    step = global_step * queries_per_step
-    max_steps = args.epochs_num * args.queries_per_epoch
-    warmup_steps = 10 * args.queries_per_epoch
-    effective_batch_size = batch_size * num_nodes * num_devices
-    base_lr = args.lr * effective_batch_size / 256
-    if step < warmup_steps:
-        lr = base_lr * step / warmup_steps
-    else:
-        step -= warmup_steps
-        max_steps -= warmup_steps
-        q = 0.5 * (1 + math.cos(math.pi * step / max_steps))
-        end_lr = base_lr * 0.001
-        lr = base_lr * q + end_lr * (1 - q)
+def adjust_learning_rate(optimizer, epoch, args):
+    """Decay the learning rate based on schedule"""
+    lr = args.lr
+    if args.cosine_scheduler:  # cosine lr schedule
+        if epoch < args.warmup:
+            alpha = epoch / args.warmup
+            warmup_factor = 0.1 * (1.0 - alpha) + alpha
+            lr *= warmup_factor
+        else:
+            lr *= 0.5 * (1. + math.cos(math.pi * epoch / args.epochs_num))
+    else:  # stepwise lr schedule
+        for milestone in args.schedule:
+            lr *= 0.1 if epoch >= milestone else 1.
     for param_group in optimizer.param_groups:
-        param_group["lr"] = lr
-    return lr
+        param_group['lr'] = lr
+
+    print('current lr:', lr)
 
 class LARS(optim.Optimizer):
     def __init__(
