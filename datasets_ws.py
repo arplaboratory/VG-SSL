@@ -18,7 +18,7 @@ import random
 from PIL import ImageOps, ImageFilter
 from torchvision.transforms import InterpolationMode
 from torch.distributed import all_gather, broadcast, barrier
-
+from mapillary_sls.mapillary_sls.datasets.msls import MSLS
 
 imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std = [0.229, 0.224, 0.225]
