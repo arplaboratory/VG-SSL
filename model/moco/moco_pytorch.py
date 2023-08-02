@@ -62,8 +62,7 @@ class MOCO(nn.Module):
     def __init__(self,
                  net,
                  image_size,
-                 num_nodes,
-                 num_devices,
+                 gpus_num,
                  projection_size = 128,
                  projection_hidden_size = 2048,
                  hidden_layer = -1,
@@ -84,8 +83,7 @@ class MOCO(nn.Module):
         self.net = net
         self.aggregation = aggregation
         self.criterion = nn.CrossEntropyLoss()
-        self.num_nodes = num_nodes
-        self.num_devices = num_devices
+        self.gpus_num = gpus_num
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
         # Augmentation is finished outside
@@ -134,7 +132,7 @@ class MOCO(nn.Module):
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
         # gather keys before updating queue
-        if not(self.num_devices==1 and self.num_nodes==1):
+        if self.gpus_num > 1:
             keys = concat_all_gather(keys)
 
         batch_size = keys.shape[0] # Use local batch size here
@@ -243,11 +241,11 @@ class MOCO(nn.Module):
             # feature should be concated as 
             # query_1 query_2 query_3 ... query_n pos_1 pos2 pos3 ... pos_n
             # n is batch size
-            if not (self.num_devices==1 and self.num_nodes==1):
+            if self.gpus_num > 1:
                 q = torch.cat(FullGatherLayer.apply(q), dim=0)
                 k = torch.cat(FullGatherLayer.apply(k), dim=0)
             features = torch.cat([q, k], dim = 0)
-            batch_size = im_q.shape[0] * self.num_nodes * self.num_devices # Infer global batch size here
+            batch_size = im_q.shape[0] * self.gpus_num # Infer global batch size here
             logits, labels = info_nce_loss(features, self.device, batch_size, self.T)
         else:
             # moco logit and label calculation

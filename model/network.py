@@ -18,7 +18,7 @@ from model.byol.byol_pytorch import BYOL
 from model.vicreg.vicreg_pytorch import VICREG
 from model.moco.moco_pytorch import MOCO
 from model.sync_batchnorm import convert_model
-from model.vicreg.utils import adjust_learning_rate, LARS, exclude_bias_and_norm
+from model.vicreg.utils import adjust_learning_rate
 import datasets_ws
 import pytorch_lightning as pl
 from torch.utils.data.dataloader import DataLoader
@@ -390,23 +390,18 @@ def visualize(image_tensor, name):
 
 def setup_optimizer_loss(args, model_parameters, return_loss=True):
     # Setup Optimizer
+    # Setup Optimizer and Loss
     if args.aggregation == "crn":
         raise NotImplementedError()
     else:
         if args.optim == "adam":
-            if args.cosine_scheduler:
-                optimizer = torch.optim.Adam(model_parameters, lr=0, weight_decay=args.wd)
-            else:
-                optimizer = torch.optim.Adam(model_parameters, lr=args.lr, weight_decay=args.wd)
+            optimizer = torch.optim.Adam(model_parameters, lr=args.lr)
         elif args.optim == "sgd":
-            if args.cosine_scheduler:
-                optimizer = torch.optim.SGD(
-                    model_parameters, lr=0, momentum=0.9, weight_decay=args.wd
-                )
-            else:
-                optimizer = torch.optim.SGD(
-                    model_parameters, lr=args.lr, momentum=0.9, weight_decay=args.wd
-                )
+            optimizer = torch.optim.SGD(
+                model_parameters, lr=args.lr, momentum=0.9, weight_decay=0.001
+            )
+        else:
+            raise NotImplementedError()
     # Setup Loss
     if args.method == "pair":
         # TODO: Add pair loss criterion here. If the model return loss, then skip
@@ -469,8 +464,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return BYOL(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
-                        num_nodes = self.args.num_nodes,
-                        num_devices = self.args.num_devices,
+                        gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         moving_average_decay = self.args.momentum,
@@ -480,8 +474,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return BYOL(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
-                        num_nodes = self.args.num_nodes,
-                        num_devices = self.args.num_devices,
+                        gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_momentum=False,
@@ -490,8 +483,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             self.return_loss = True
             return VICREG(self.backbone,
                         image_size = self.args.resize,
-                        num_nodes = self.args.num_nodes,
-                        num_devices = self.args.num_devices,
+                        gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         n_layers = self.args.n_layers)
@@ -499,8 +491,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             self.return_loss = True
             return VICREG(self.backbone,
                         image_size = self.args.resize,
-                        num_nodes = self.args.num_nodes,
-                        num_devices = self.args.num_devices,
+                        gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
@@ -510,8 +501,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return MOCO(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
-                        num_nodes = self.args.num_nodes,
-                        num_devices = self.args.num_devices,
+                        gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         K = self.args.queue_size,
@@ -521,8 +511,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return MOCO(self.backbone,
                         hidden_layer = -1,
                         image_size = self.args.resize,
-                        num_nodes = self.args.num_nodes,
-                        num_devices = self.args.num_devices,
+                        gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
                         aggregation = self.aggregation,
                         use_simclr = True,
@@ -715,29 +704,18 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.log("test_recall1", recalls[0], logger=True)
 
     def configure_optimizers(self):
-        for param in self.backbone.parameters():
-            self.freeze_param_list.append(param.requires_grad)
-            param.requires_grad = False
-        self.freeze_backbone = True
         optimizer, self.criterion_pairs = setup_optimizer_loss(self.args, filter(lambda p: p.requires_grad, self.ssl_model.parameters()), return_loss=True)
         return optimizer
 
     def on_before_zero_grad(self, _):
         if self.args.cosine_scheduler:
-            self.lr = adjust_learning_rate(self.args, self.optimizers(), self.global_step, self.batch_size, self.trainer.num_nodes, self.trainer.num_devices)
+            self.lr = adjust_learning_rate(self.optimizers(), self.current_epoch, self.args)
         self.update()
 
     def on_train_epoch_start(self):
         self.train_ds.is_inference = True
         self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
         self.train_ds.is_inference = False
-
-        if self.freeze_backbone and self.current_epoch > self.args.freeze_epoch_num:
-            for i, param in enumerate(self.backbone.parameters()):
-                param.requires_grad = self.freeze_param_list[i]
-            self.freeze_backbone = False
-            self.optimizers().add_param_group({'params': filter(lambda p: p.requires_grad, self.backbone.parameters())})
-            logging.debug("Adding backbone to the optimizer for unfreezing")
 
     def setup(self, stage):
         if stage == "validate":

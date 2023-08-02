@@ -53,8 +53,7 @@ class VICREG(nn.Module):
         self,
         net,
         image_size,
-        num_nodes,
-        num_devices,
+        gpus_num,
         projection_size = 8192,
         projection_hidden_size = 8192,
         use_bt_loss = False,
@@ -68,8 +67,7 @@ class VICREG(nn.Module):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
-        self.num_nodes = num_nodes
-        self.num_devices = num_devices
+        self.gpus_num = gpus_num
         # Augmentation is finished outside
 
         self.use_bt_loss = use_bt_loss
@@ -127,7 +125,7 @@ class VICREG(nn.Module):
             # Use vicreg loss
             repr_loss = F.mse_loss(x, y)
 
-            if not (self.num_devices==1 and self.num_nodes==1):
+            if self.gpus_num > 1:
                 x = torch.cat(FullGatherLayer.apply(x), dim=0)
                 y = torch.cat(FullGatherLayer.apply(y), dim=0)
             x = x - x.mean(dim=0)
@@ -152,7 +150,7 @@ class VICREG(nn.Module):
         else:
             # Use Barlow twins loss
             # empirical cross-correlation matrix
-            if not (self.num_devices==1 and self.num_nodes==1):
+            if self.gpus_num > 1:
                 x = torch.cat(FullGatherLayer.apply(x), dim=0)
                 y = torch.cat(FullGatherLayer.apply(y), dim=0)
             x = x - x.mean(dim=0)

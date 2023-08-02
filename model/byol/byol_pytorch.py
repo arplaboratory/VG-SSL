@@ -122,11 +122,10 @@ def SimSiamMLP(dim, projection_size, hidden_size=4096, n_layers=3):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -2, mlp = "MLP", aggregation = None, n_layers = -1):
+    def __init__(self, net, projection_size, projection_hidden_size, mlp = "MLP", aggregation = None, n_layers = -1):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
-        self.layer = layer
         self.n_layers = n_layers
 
         self.projector = None
@@ -138,28 +137,6 @@ class NetWrapper(nn.Module):
         else:
             raise NotImplementedError()
 
-        self.hidden = {}
-        self.hook_registered = False
-
-    def _find_layer(self):
-        if type(self.layer) == str:
-            modules = dict([*self.net.named_modules()])
-            return modules.get(self.layer, None)
-        elif type(self.layer) == int:
-            children = [*self.net.children()]
-            return children[self.layer]
-        return None
-
-    def _hook(self, _, input, output):
-        device = input[0].device
-        self.hidden[device] = flatten(output)
-
-    def _register_hook(self):
-        layer = self._find_layer()
-        assert layer is not None, f'hidden layer ({self.layer}) not found'
-        handle = layer.register_forward_hook(self._hook)
-        self.hook_registered = True
-
     def _get_projector(self, hidden):
         _, dim = hidden.shape
         # Projector implemented in aggregation
@@ -167,22 +144,10 @@ class NetWrapper(nn.Module):
         return projector.to(hidden)
 
     def get_representation(self, x):
-        if self.layer == -1:
-            if self.aggregation is not None:
-                return self.aggregation(self.net(x))
-            else:
-                return self.net(x)
-
-        if not self.hook_registered:
-            self._register_hook()
-
-        self.hidden.clear()
-        _ = self.net(x)
-        hidden = self.hidden[x.device]
-        self.hidden.clear()
-
-        assert hidden is not None, f'hidden layer {self.layer} never emitted an output'
-        return hidden
+        if self.aggregation is not None:
+            return self.aggregation(self.net(x))
+        else:
+            return self.net(x)
 
     def forward(self, x, return_projection = True):
         representation = self.get_representation(x)
@@ -203,9 +168,7 @@ class BYOL(nn.Module):
         self,
         net,
         image_size,
-        num_nodes,
-        num_devices,
-        hidden_layer = -2,
+        gpus_num,
         projection_size = 256,
         projection_hidden_size = 4096,
         moving_average_decay = 0.99,
@@ -216,8 +179,7 @@ class BYOL(nn.Module):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
-        self.num_nodes = num_nodes
-        self.num_devices = num_devices
+        self.gpus_num = gpus_num
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
         # Augmentation is finished outside
@@ -229,7 +191,7 @@ class BYOL(nn.Module):
             else:
                 n_layers = 3
 
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation, n_layers = n_layers)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, mlp="MLP" if use_momentum else "SimsiamMLP", aggregation=self.aggregation, n_layers = n_layers)
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
