@@ -114,10 +114,11 @@ if args.aggregation == "crn":
 else:
     if args.optim == "adam":
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    elif args.optim == 'adamw':
+        optimizer = torch.optim.AdamW(parameters, args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0.03,
+                                        amsgrad=False)
     elif args.optim == "sgd":
-        optimizer = torch.optim.SGD(
-            model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
-        )
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001)
     else:
         raise NotImplementedError()
 
@@ -169,13 +170,11 @@ if torch.cuda.device_count() >= 2:
     model = convert_model(model)
     model = model.cuda()
 
-# First val loop for sanity check
-# Compute recalls on validation set
-# recalls, recalls_str = test.test(args, val_ds, model)
-# logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
-
 # Training loop
 for epoch_num in range(start_epoch_num, args.epochs_num):
+    if args.optim == 'adamw':
+        adjust_learning_rate(optimizer, epoch_num, args)
+
     logging.info(f"Start training epoch: {epoch_num:02d}")
 
     epoch_start_time = datetime.now()
