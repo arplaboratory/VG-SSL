@@ -10,7 +10,7 @@ import math
 import torch
 import random
 import sys
-from mapillary_sls.datasets.generic_dataset import ImagesFromList
+from mapillary_sls.mapillary_sls.datasets.generic_dataset import ImagesFromList
 from tqdm import tqdm
 
 default_cities = {
@@ -22,7 +22,7 @@ default_cities = {
 }
 
 class MSLS(Dataset):
-    def __init__(self, root_dir, cities = '', nNeg = 5, transform = None, mode = 'train', task = 'im2im', subtask = 'all', seq_length = 1, posDistThr = 10, negDistThr = 25, cached_queries = 1000, cached_negatives = 1000, positive_sampling = True):
+    def __init__(self, root_dir, save=False, cities = '', nNeg = 5, transform = None, mode = 'train', task = 'im2im', subtask = 'all', seq_length = 1, posDistThr = 10, negDistThr = 25, cached_queries = 1000, cached_negatives = 1000, positive_sampling = True):
 
         # initializing
         assert mode in ('train', 'val', 'test')
@@ -42,6 +42,7 @@ class MSLS(Dataset):
         self.qImages = []
         self.pIdx = []
         self.nonNegIdx = []
+        self.nonNegIdx_hard = []
         self.dbImages = []
         self.sideways = []
         self.night = []
@@ -147,6 +148,7 @@ class MSLS(Dataset):
 
                 if mode == 'train':
                     nD, nI = neigh.radius_neighbors(utmQ, self.negDistThr)
+                    nHardD, nHardI = neigh.radius_neighbors(utmQ, 50)
 
                 night, sideways, index = qData['night'].values, (qData['view_direction'] == 'Sideways').values, qData.index
                 for q_seq_idx in range(len(qSeqKeys)):
@@ -171,10 +173,14 @@ class MSLS(Dataset):
 
                             self.nonNegIdx.append(n_seq_idx + _lenDb)
 
+                            n_uniq_frame_idxs_hard = np.unique([n for nonNeg in nHardI[q_uniq_frame_idx] for n in nonNeg])
+                            n_seq_idx_hard = np.unique(uniqFrameIdx2seqIdx(unique_dbSeqIdx[n_uniq_frame_idxs_hard], dbSeqIdxs))
+
+                            self.nonNegIdx_hard.append(n_seq_idx_hard + _lenDb)
+
                             # gather meta which is useful for positive sampling
                             if sum(night[np.in1d(index, q_frame_idxs)]) > 0: self.night.append(len(self.qIdx)-1)
                             if sum(sideways[np.in1d(index, q_frame_idxs)]) > 0: self.sideways.append(len(self.qIdx)-1)
-
                     else:
                         query_key = qSeqKeys[q_seq_idx].split('/')[-1][:-4]
                         self.query_keys_with_no_match.append(query_key)
@@ -211,14 +217,26 @@ class MSLS(Dataset):
             print("Try choosing a different subtask or more cities")
             sys.exit()
 
+        # save the image list to npy files so that the loading is faster
+
         # cast to np.arrays for indexing during training
+        # print(len(self.qImages), len(self.dbImages), len(self.pIdx), len(self.qIdx))
         self.qIdx = np.asarray(self.qIdx)
         self.qImages = np.asarray(self.qImages)
-        self.pIdx = np.asarray(self.pIdx)
-        self.nonNegIdx = np.asarray(self.nonNegIdx)
+        self.pIdx = np.asarray(self.pIdx, dtype=object)
+        self.nonNegIdx = np.asarray(self.nonNegIdx, dtype=object)
         self.dbImages = np.asarray(self.dbImages)
         self.sideways = np.asarray(self.sideways)
         self.night = np.asarray(self.night)
+        # print(len(self.qImages), len(self.dbImages), self.qImages[0], self.pIdx.shape)
+        # raise Exception
+        if save:
+            np.save(join(root_dir, 'npys', 'msls_'+self.mode+'_qIdx.npy'), self.qIdx)
+            np.save(join(root_dir, 'npys', 'msls_' + self.mode + '_qImages.npy'), self.qImages)
+            np.save(join(root_dir, 'npys', 'msls_' + self.mode + '_dbImages.npy'), self.dbImages)
+            np.save(join(root_dir, 'npys', 'msls_' + self.mode + '_pIdx.npy'), self.pIdx)
+            np.save(join(root_dir, 'npys', 'msls_' + self.mode + 'nonNegIdx.npy'), self.nonNegIdx)
+            np.save(join(root_dir, 'npys', 'msls_' + self.mode + 'nonNegIdx_hard.npy'), self.nonNegIdx_hard)
 
         # decide device type ( important for triplet mining )
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
