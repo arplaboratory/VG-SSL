@@ -174,6 +174,8 @@ def parse_arguments():
             "cct384",
             "vit",
             "vitmae",
+            "deit",
+            "deitBase"
         ],
         help="_",
     )
