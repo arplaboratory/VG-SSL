@@ -26,6 +26,7 @@ from datasets_ws import inv_base_transforms
 from torchvision import transforms
 import numpy as np
 import faiss
+from model.Deit import deit_small_distilled_patch16_224, deit_base_distilled_patch16_384
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {
