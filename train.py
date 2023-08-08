@@ -19,6 +19,7 @@ import torchvision.transforms as transforms
 from torch.utils.data.dataloader import DataLoader
 import wandb
 from uuid import uuid4
+from model.Deit import deit_small_distilled_patch16_224, deit_base_distilled_patch16_384
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
 
