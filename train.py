@@ -66,8 +66,10 @@ logging.info(f"Test set: {test_ds}")
 
 # Initialize model
 if args.backbone == "deitBase":
+    args.features_dim = args.fc_output_dim
     model = deit_base_distilled_patch16_384(img_size=args.resize, num_classes=args.features_dim)
 elif args.backbone == "deit":
+    args.features_dim = args.fc_output_dim
     model = deit_small_distilled_patch16_224(img_size=args.resize, num_classes=args.features_dim)
 else:
     model = network.GeoLocalizationNet(args)
