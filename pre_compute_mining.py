@@ -35,6 +35,7 @@ from tqdm import tqdm
 import test
 import random
 import argparse
+from model.Deit import deit_small_distilled_patch16_224, deit_base_distilled_patch16_384
 
 base_transform = torchvision.transforms.Compose([
     torchvision.transforms.ToTensor(),
@@ -78,7 +79,6 @@ def scan_training(args):
 
 
 def compute_mining(args):
-    args.backbone = 'deitBase' #'resnet50' #
     query_feature = cp.load('result/'+args.dataset_name+'_v2_'+args.backbone+'_query_feature.npy')
     reference_features = cp.load('result/'+args.dataset_name+'_v2_'+args.backbone+'_reference_feature.npy')
     # features = cp.load('result/train_features_GLD.npy')
