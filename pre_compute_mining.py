@@ -204,5 +204,7 @@ if __name__ == '__main__':
     args.resume = parsed_args.resume + "/best_model.pth"
     if args.backbone.startswith("resnet"):
         args.fc_output_dim = 1024
+    if not os.path.isdir("result"):
+        os.mkdir("result")
     scan_training(args)
     compute_mining(args)
