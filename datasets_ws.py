@@ -37,7 +37,16 @@ inv_base_transforms = transforms.Compose(
 )
 
 def path_to_pil_img(path):
-    return Image.open(path).convert("RGB")
+    count = 0
+    while count < 10:
+        try:
+            img = Image.open(path).convert("RGB")
+            return img
+        except Exception:
+            logging.debug(f"Retry: {path}")
+            count += 1
+    raise KeyError("Have tried 10 times. Give up")
+    
 
 
 def collate_fn(batch):
