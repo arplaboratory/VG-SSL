@@ -123,7 +123,7 @@ else:
     if args.optim == "adam":
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     elif args.optim == 'adamw':
-        optimizer = torch.optim.AdamW(parameters, args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0.03,
+        optimizer = torch.optim.AdamW(model.parameters(), args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0.03,
                                         amsgrad=False)
     elif args.optim == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001)

@@ -46,8 +46,6 @@ def path_to_pil_img(path):
             logging.debug(f"Retry: {path}")
             count += 1
     raise KeyError("Have tried 10 times. Give up")
-    
-
 
 def collate_fn(batch):
     """Creates mini-batch tensors from the list of tuples (images, 
@@ -248,34 +246,17 @@ class TripletsDataset(BaseDataset):
             ]
         )
 
-        self.query_transform = transforms.Compose(
-            [
-                transforms.ColorJitter(brightness=args.brightness)
-                if args.brightness != None
-                else identity_transform,
-                transforms.ColorJitter(contrast=args.contrast)
-                if args.contrast != None
-                else identity_transform,
-                transforms.ColorJitter(saturation=args.saturation)
-                if args.saturation != None
-                else identity_transform,
-                transforms.ColorJitter(hue=args.hue)
-                if args.hue != None
-                else identity_transform,
-                transforms.RandomPerspective(args.rand_perspective)
-                if args.rand_perspective != None
-                else identity_transform,
-                transforms.RandomResizedCrop(
-                    size=self.resize, scale=(1 - args.random_resized_crop, 1)
-                )
-                if args.random_resized_crop != None
-                else identity_transform,
-                transforms.RandomRotation(degrees=args.random_rotation)
-                if args.random_rotation != None
-                else identity_transform,
+        self.query_transform = transforms.Compose([
+                transforms.ColorJitter(brightness=args.brightness)       if args.brightness          != None else identity_transform,
+                transforms.ColorJitter(contrast=args.contrast)           if args.contrast            != None else identity_transform,
+                transforms.ColorJitter(saturation=args.saturation)       if args.saturation          != None else identity_transform,
+                transforms.ColorJitter(hue=args.hue)                     if args.hue                 != None else identity_transform,
+                transforms.RandomPerspective(args.rand_perspective)      if args.rand_perspective    != None else identity_transform,
+                transforms.RandomResizedCrop(size=self.resize, scale=(1-args.random_resized_crop, 1))  \
+                                                                         if args.random_resized_crop != None else identity_transform,
+                transforms.RandomRotation(degrees=args.random_rotation)  if args.random_rotation     != None else identity_transform,
                 self.resized_transform,
-            ]
-        )
+        ])
 
         if dataset_name == 'msls':
             self.hard_positives_per_query = self.pIdx #[self.qIdx]
