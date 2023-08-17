@@ -5,10 +5,10 @@
 #SBATCH --time=48:00:00
 #SBATCH --gres=gpu:4
 #SBATCH --mem=100GB
-#SBATCH --job-name=train_msls_partial
-#SBATCH --output=train_msls_partial.out
+#SBATCH --job-name=train_msls_rerank
+#SBATCH --output=train_msls_rerank.out
 
 singularity exec --nv \
                  --overlay ../mapillary_sls.sqf:ro \
                  /scratch/work/public/singularity/cuda11.6.124-cudnn8.4.0.27-devel-ubuntu20.04.4.sif \
-                 /bin/bash -c "source ~/.bashrc; conda activate VG_SSL; python3 -u train.py  --dataset_name msls --backbone resnet101conv5 --aggregation gem --mining partial --datasets_folder ./datasets --save_dir global_retrieval --lr 0.00001 --fc_output_dim 1024 --train_batch_size 16 --infer_batch_size 64 --num_workers 16 --epochs_num 100 --patience 10 --negs_num_per_query 2 --queries_per_epoch 50000 --cache_refresh_rate 10000 --unfreeze --resume logs/global_retrieval/msls-2023-08-09_20-35-49-592ba884-45dd-4c06-8ed7-a6d6c20fd822/best_model.pth"
+                 /bin/bash -c "source ~/.bashrc; conda activate VG_SSL; python3 -u train_reranker.py  --dataset_name msls --backbone resnet101conv5 --aggregation gem --mining partial --datasets_folder ./datasets --save_dir global_retrieval --lr 0.00001 --fc_output_dim 1024 --train_batch_size 16 --infer_batch_size 64 --num_workers 16 --epochs_num 100 --patience 10 --negs_num_per_query 2 --queries_per_epoch 50000 --cache_refresh_rate 10000 --unfreeze --resume logs/global_retrieval/msls-2023-08-09_20-35-49-592ba884-45dd-4c06-8ed7-a6d6c20fd822/best_model.pth"
