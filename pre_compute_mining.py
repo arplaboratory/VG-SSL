@@ -123,7 +123,7 @@ def compute_mining(args):
         if i % 100 == 0:
             print(i, 'time:', time.time() - t_s, 'estimated:', (N_q - i) * (time.time() - t_s) / 3600)
         # raise Exception
-    np.save('result/' + args.dataset_name + '_v2_' + args.backbone + '_hard_final_distance.npy', hard_final)
+    np.save('result/' + args.dataset_name + '_v2_' + args.backbone + '_hard_final.npy', hard_final)
 
 class Args():
     def __init__(self):

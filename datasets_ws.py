@@ -232,7 +232,7 @@ class TripletsDataset(BaseDataset):
         if self.mining == "full":  # "Full database mining" keeps a cache with last used negatives
             self.neg_cache = [np.empty((0,), dtype=np.int32) for _ in range(self.queries_num)]
         elif 'global' in self.mining:
-            self.neg_cache = np.load(args.dataset_name + '_v2_' + args.backbone + '_hard_final.npy')  # _hard_final_strict
+            self.neg_cache = np.load("result/" + args.dataset_name + '_v2_' + args.backbone + '_hard_final.npy')  # _hard_final_strict
             self.neg_hardness = args.neg_hardness
         self.is_inference = False
 

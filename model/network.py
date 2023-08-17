@@ -755,12 +755,7 @@ class GeoLocalizationNetRerank(nn.Module):
             else:
                 self.backbone = deit_small_distilled_patch16_224(img_size=args.resize, num_classes=args.fc_output_dim, embed_layer=AnySizePatchEmbed)
             args.features_dim = args.fc_output_dim
-            if args.hypercolumn:
-                self.hyper_s = args.hypercolumn // 100
-                self.hyper_e = args.hypercolumn % 100
-                self.local_head = nn.Linear(self.backbone.embed_dim*(self.hyper_e-self.hyper_s), self.out_dim, bias=True)
-            else:
-                self.local_head = nn.Linear(self.backbone.embed_dim, self.out_dim, bias=True)
+            self.local_head = nn.Linear(self.backbone.embed_dim, self.out_dim, bias=True)
         else:
             self.backbone = get_backbone(args)
             self.aggregation = get_aggregation(args)
@@ -785,10 +780,7 @@ class GeoLocalizationNetRerank(nn.Module):
                                                 channel_inner=args.channel_bottleneck)] * args.num_non_local
                 self.non_local = nn.Sequential(*non_local_list)
                 self.self_att = True
-            if args.hypercolumn:
-                self.local_head = nn.Linear(1856, self.out_dim, bias=True)
-            else:
-                self.local_head = nn.Linear(1024, self.out_dim, bias=True)
+            self.local_head = nn.Linear(1024, self.out_dim, bias=True)
         # ==================================================================
         self.local_head.weight.data.normal_(mean=0.0, std=0.01)
         self.local_head.bias.data.zero_()
@@ -832,17 +824,7 @@ class GeoLocalizationNetRerank(nn.Module):
         x = self.backbone[7](x)
         x4 = x*1  #.detach()
 
-        if self.args.hypercolumn:
-            B,C, H, W = x3.shape
-            local_feature = torch.cat([
-                F.interpolate(x0, size=(H, W), mode='bicubic'), # 64
-                F.interpolate(x1, size=(H, W), mode='bicubic'), # 256
-                F.interpolate(x2, size=(H, W), mode='bicubic'), # 512
-                x3, # 1024
-                # F.interpolate(x4, size=(H, W), mode='bicubic'),
-            ],dim=1)
-        else:
-            local_feature = x3
+        local_feature = x3
 
         # x = self.avgpool(x)
         # x = torch.flatten(x, 1)
@@ -943,11 +925,6 @@ class GeoLocalizationNetRerank(nn.Module):
                 last_map = (att[:, :, :2, 2:].detach()).sum(dim=1).sum(dim=1)
             x = blk(x)
 
-            # to support hypercolumn, not used, can be removed.
-            if (not self.single) and self.args.hypercolumn:
-                if self.hyper_s <= i < self.hyper_e:
-                    output_list.append(x*1.) # .detach()
-
         x = self.backbone.norm(x)
 
         x_cls = self.backbone.head(x[:, 0])
@@ -956,8 +933,6 @@ class GeoLocalizationNetRerank(nn.Module):
         if self.single:
             return self.backbone.l2_norm((x_cls + x_dist) / 2)
         else:
-            if self.args.hypercolumn:
-                output = torch.cat(output_list, dim=2)
             order = torch.argsort(last_map, dim=1, descending=True)
             multi_out = np.minimum(order.shape[1], self.multi_out)
             local_features = torch.gather(input=output,

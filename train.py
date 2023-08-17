@@ -20,6 +20,7 @@ from torch.utils.data.dataloader import DataLoader
 import wandb
 from uuid import uuid4
 from model.Deit import deit_small_distilled_patch16_224, deit_base_distilled_patch16_384
+from model.vicreg.utils import adjust_learning_rate
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
 

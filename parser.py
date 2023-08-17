@@ -9,8 +9,27 @@ def parse_arguments():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # Training parameters
+    #########################################################################
+    # R2former
+    parser.add_argument('--fix', type=int, default=1,
+                        help='use fixed global model')
     parser.add_argument('--schedule', default=[60, 80], nargs='*', type=int,
                     help='learning rate schedule (when to drop lr by 10x)')
+    parser.add_argument('--finetune', type=int, default=0,
+                    help='enable the gradient flows back from reranking module to global retreival module')
+    parser.add_argument('--rerank_loss', type=str, default='ce',
+                        help='use triplet loss for rerank')
+    parser.add_argument('--rerank_model', type=str, default='r2former',
+                        help='use triplet loss for rerank')
+    parser.add_argument("--rerank_batch_size", type=int, default=4,
+                    help="Batch size for inference (caching and testing)")
+    parser.add_argument('--save_best', type=int, default=1,
+                    help='save the best R k, k=0 => r1, k=1 => r5')
+    parser.add_argument('--test', action='store_true',
+                        help='use cosine lr schedule')
+    parser.add_argument("--warmup", type=int, default=-1, help=" ")
+    #########################################################################
+    # SSL
     parser.add_argument(
         "--remove_norm",
         action="store_true",
@@ -81,6 +100,7 @@ def parse_arguments():
         action="store_true",
         help="Choose if we use use_database_aug only for SSL training."
     )
+    #########################################################################
     parser.add_argument(
         "--train_batch_size",
         type=int,
@@ -108,7 +128,6 @@ def parse_arguments():
     )
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.00001, help="_")
-    parser.add_argument("--warmup", type=int, default=-1, help=" ")
     parser.add_argument(
         "--lr_crn_layer",
         type=float,
