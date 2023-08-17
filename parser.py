@@ -28,6 +28,8 @@ def parse_arguments():
     parser.add_argument('--test', action='store_true',
                         help='use cosine lr schedule')
     parser.add_argument("--warmup", type=int, default=-1, help=" ")
+    parser.add_argument('--reg_top', type=int, default=5,
+                    help='use all layer for local feature')
     #########################################################################
     # SSL
     parser.add_argument(
