@@ -90,6 +90,7 @@ class BaseDataset(data.Dataset):
     ):
         super().__init__()
         self.args = args
+        self.split = split
         self.dataset_name = dataset_name
         if dataset_name == 'msls':
             self.dataset_folder = join(datasets_folder, dataset_name)
