@@ -6,8 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
-from mapillary_sls.datasets.msls import MSLS
-from mapillary_sls.utils.eval import eval, create_dummy_predictions, download_msls_sample
+from mapillary_sls.mapillary_sls.datasets.msls import MSLS
+from mapillary_sls.mapillary_sls.utils.eval import eval, create_dummy_predictions, download_msls_sample
 
 
 def main():
