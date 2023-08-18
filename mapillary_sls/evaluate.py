@@ -1,4 +1,4 @@
-ts affiliates.
+#  Copyright (c) Facebook, Inc. and its affiliates.
 
 import argparse
 from os.path import basename as bn
