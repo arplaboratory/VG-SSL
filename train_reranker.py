@@ -88,9 +88,9 @@ def run_train():
         if args.fix and (not 'local_head' in name) and (not 'Reranker' in name):
             param.requires_grad = False
         if param.requires_grad:
-            print(name)
+            logging.debug(name)
     parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
-    print(model.module.local_head.weight.requires_grad)
+    logging.debug(model.module.local_head.weight.requires_grad)
     # ======================================================
     #### Setup Optimizer and Loss
     if args.aggregation == "crn":
@@ -148,6 +148,10 @@ def run_train():
                                                 rerank_dim=(args.local_dim + 3), reg_top=args.reg_top)
         logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
         return 0
+
+    # Sanity check global retrieval part
+    recalls, recalls_str = test.test(args, val_ds, model)
+    logging.info(f"Only Global retrieval: Recalls on val set {val_ds}: {recalls_str}")
 
     #### Training loop
     for epoch_num in range(start_epoch_num, args.epochs_num):
