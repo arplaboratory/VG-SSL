@@ -85,6 +85,7 @@ class GeoLocalizationNet(nn.Module):
                                            channel_inner=args.channel_bottleneck)]* args.num_non_local
             self.non_local = nn.Sequential(*non_local_list)
             self.self_att = True
+        self.single = True
 
     def forward(self, x):   
         x = self.backbone(x)
