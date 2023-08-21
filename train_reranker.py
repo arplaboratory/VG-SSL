@@ -150,8 +150,10 @@ def run_train():
         return 0
 
     # Sanity check global retrieval part
+    model.module.single = True
     recalls, recalls_str = test.test(args, val_ds, model)
     logging.info(f"Only Global retrieval: Recalls on val set {val_ds}: {recalls_str}")
+    model.module.single = False
 
     #### Training loop
     for epoch_num in range(start_epoch_num, args.epochs_num):
