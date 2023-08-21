@@ -2,6 +2,7 @@
 from torch import nn, optim
 import torch
 import math
+import logging
 
 def adjust_learning_rate(optimizer, epoch, args):
     """Decay the learning rate based on schedule"""
@@ -19,4 +20,4 @@ def adjust_learning_rate(optimizer, epoch, args):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-    print('current lr:', lr)
+    logging.debug('current lr:', lr)
