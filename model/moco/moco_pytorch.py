@@ -202,10 +202,7 @@ class MOCO(nn.Module):
         """
 
         if return_embedding:
-            if not return_projection:
-                return self.online_encoder(im_q, return_projection = False)
-            else:
-                return self.online_encoder(im_q, return_projection = True)
+            return self.online_encoder(im_q, return_projection = return_projection)
 
         # compute query features
         q = self.online_encoder(im_q, return_projection = True)  # queries: NxC

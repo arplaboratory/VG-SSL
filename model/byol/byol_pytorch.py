@@ -220,10 +220,7 @@ class BYOL(nn.Module):
         # assert not (self.training and x.shape[0] == 1), 'you must have greater than 1 sample when training, due to the batchnorm in the projection layer'
 
         if return_embedding:
-            if not return_projection:
-                return self.online_encoder(x, return_projection = False)
-            else:
-                return self.online_encoder(x, return_projection = True)
+            return self.online_encoder(x, return_projection = return_projection)
 
         # image one and two are proceeded outsides
         image_one, image_two = x, y
