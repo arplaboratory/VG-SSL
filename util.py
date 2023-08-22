@@ -61,6 +61,12 @@ def resume_train(args, model, optimizer=None, strict=False):
     logging.debug(f"Loading checkpoint: {args.resume}")
     checkpoint = torch.load(args.resume)
     start_epoch_num = checkpoint["epoch_num"]
+    if args.backbone.startswith('deit') and 'module.backbone.cls_token' not in checkpoint["model_state_dict"]:
+        for key in list(checkpoint["model_state_dict"].keys()):
+            checkpoint["model_state_dict"][key.replace('module','module.backbone')] = checkpoint["model_state_dict"][key]
+            del(checkpoint["model_state_dict"][key])
+        # model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+        # raise Exception
     model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
     if optimizer:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
