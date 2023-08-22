@@ -56,12 +56,6 @@ def parse_arguments():
         help="Queue size for MOCO"
     )
     parser.add_argument(
-        "--database_negatives_ratio",
-        type=float,
-        default=0,
-        help="Add random database negatives with itself for contrastive learning"
-    )
-    parser.add_argument(
         "--projection_size",
         type=int,
         default=-1,

@@ -65,7 +65,6 @@ class MOCO(nn.Module):
                  gpus_num,
                  projection_size = 128,
                  projection_hidden_size = 2048,
-                 hidden_layer = -1,
                  K=65536,
                  moving_average_decay = 0.999,
                  T=0.07,
@@ -95,7 +94,7 @@ class MOCO(nn.Module):
 
         # create the encoders
         # num_classes is the output fc dimension
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, mlp="NoBnMLP", aggregation=self.aggregation, n_layers=n_layers)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, mlp="NoBnMLP", aggregation=self.aggregation, n_layers=n_layers)
         self.use_momentum = True
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)

@@ -62,10 +62,6 @@ class GeoLocalizationNet(nn.Module):
         self.backbone = get_backbone(args)
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
-        if args.n_layers != 0:
-             self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
-        self.self_att = False
-
         if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
             if args.l2 == "before_pool":
                 self.aggregation = nn.Sequential(L2Norm(), self.aggregation, Flatten())
@@ -73,13 +69,16 @@ class GeoLocalizationNet(nn.Module):
                 self.aggregation = nn.Sequential(self.aggregation, L2Norm(), Flatten())
             elif args.l2 == "none":
                 self.aggregation = nn.Sequential(self.aggregation, Flatten())
-        
         if args.fc_output_dim != None:
             # Concatenate fully connected layer to the aggregation layer
             self.aggregation = nn.Sequential(self.aggregation,
                                              nn.Linear(args.features_dim, args.fc_output_dim),
                                              L2Norm())
             args.features_dim = args.fc_output_dim
+        if args.n_layers != 0:
+             self.aggregation = attach_projection_layers(args, self.backbone, self.aggregation, args.resize, args.projection_size)
+             
+        self.self_att = False
         if args.non_local:
             non_local_list = [NonLocalBlock(channel_feat=get_output_channels_dim(self.backbone),
                                            channel_inner=args.channel_bottleneck)]* args.num_non_local
@@ -313,7 +312,7 @@ def get_output_channels_dim(model):
     """Return the number of channels in the output of a model."""
     return model(torch.ones([1, 3, 224, 224])).shape[1]
 
-def attach_compression_layer_fc(args, backbone, aggregation, image_size, projection_size):
+def attach_projection_layers(args, backbone, aggregation, image_size, projection_size):
     rand_x = torch.randn(2, 3, image_size[0], image_size[1])
     backbone.eval()
     aggregation.eval()
@@ -322,64 +321,61 @@ def attach_compression_layer_fc(args, backbone, aggregation, image_size, project
     backbone.train()
     aggregation.train()
     _, dim = representation_after_agg.shape
-    if projection_size == dim:
-        fc_layer = nn.Sequential(L2Norm())
-    else:
-        if args.ssl_method == "simsiam" or args.ssl_method == "byol":
-            if args.n_layers == 3:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
-                                        L2Norm())
-            elif args.n_layers == 2:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
-                                        L2Norm())
-            elif args.n_layers == 1:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                        L2Norm())
-            else:
-                raise NotImplementedError()
-        elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
-            if args.n_layers == 2:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
-                                        L2Norm())
-            elif args.n_layers == 1:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                        L2Norm())
-            else:
-                raise NotImplementedError()
-        elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
-            if args.n_layers == 3:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
-                                        L2Norm() if not args.remove_norm else nn.Identity()) 
-            elif args.n_layers == 2:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
-                                        L2Norm() if not args.remove_norm else nn.Identity())
-            elif args.n_layers == 1:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
-                                        L2Norm() if not args.remove_norm else nn.Identity())
-            else:
-                raise NotImplementedError()
+    if args.ssl_method == "simsiam" or args.ssl_method == "byol":
+        if args.n_layers == 3:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size),
+                                    L2Norm())
+        elif args.n_layers == 2:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size),
+                                    L2Norm())
+        elif args.n_layers == 1:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    L2Norm())
         else:
             raise NotImplementedError()
+    elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
+        if args.n_layers == 2:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size),
+                                    L2Norm())
+        elif args.n_layers == 1:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    L2Norm())
+        else:
+            raise NotImplementedError()
+    elif args.ssl_method == "vicreg" or args.ssl_method == "bt":
+        if args.n_layers == 3:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size),
+                                    L2Norm() if not args.remove_norm else nn.Identity()) 
+        elif args.n_layers == 2:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size),
+                                    L2Norm() if not args.remove_norm else nn.Identity())
+        elif args.n_layers == 1:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                                    L2Norm() if not args.remove_norm else nn.Identity())
+        else:
+            raise NotImplementedError()
+    else:
+        raise NotImplementedError()
     aggregation = nn.Sequential(
         aggregation,
         fc_layer
@@ -426,8 +422,21 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         self.backbone = get_backbone(args)
         self.args = args
         self.aggregation = get_aggregation(args)
-        if self.args.n_layers != 0:
-            self.aggregation = attach_compression_layer_fc(args, self.backbone, self.aggregation, args.resize, args.projection_size, args.device)
+        if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
+            if args.l2 == "before_pool":
+                self.aggregation = nn.Sequential(L2Norm(), self.aggregation, Flatten())
+            elif args.l2 == "after_pool":
+                self.aggregation = nn.Sequential(self.aggregation, L2Norm(), Flatten())
+            elif args.l2 == "none":
+                self.aggregation = nn.Sequential(self.aggregation, Flatten())
+        if args.fc_output_dim != None:
+            # Concatenate fully connected layer to the aggregation layer
+            self.aggregation = nn.Sequential(self.aggregation,
+                                             nn.Linear(args.features_dim, args.fc_output_dim),
+                                             L2Norm())
+            args.features_dim = args.fc_output_dim
+        if args.n_layers != 0:
+             self.aggregation = attach_projection_layers(args, self.backbone, self.aggregation, args.resize, args.projection_size)
         self.arch_name = args.backbone
         self.return_loss = False
         self.ssl_model = self.get_ssl_model()
@@ -439,7 +448,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if self.args.ssl_method == "byol":
             self.return_loss = True
             return BYOL(self.backbone,
-                        hidden_layer = -1,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
@@ -449,7 +457,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         elif self.args.ssl_method == "simsiam":
             self.return_loss = True
             return BYOL(self.backbone,
-                        hidden_layer = -1,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
@@ -476,7 +483,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         elif self.args.ssl_method == "mocov2":
             self.return_loss = True
             return MOCO(self.backbone,
-                        hidden_layer = -1,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
@@ -486,7 +492,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         elif self.args.ssl_method == "simclr":
             self.return_loss = True
             return MOCO(self.backbone,
-                        hidden_layer = -1,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
                         projection_size = self.args.projection_size,
@@ -531,7 +536,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         # Compute pairs to use in the pair loss
         # SSL methods like vicreg and simclr requires drop last, otherwise the extra replicates will affect the loss
         self.train_ds.is_inference = True
-        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
+        self.train_ds.compute_pairs(self.args, self.ssl_model)
         self.train_ds.is_inference = False
         pairs_dl = DataLoader(
             dataset=self.train_ds,
@@ -691,7 +696,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
     def on_train_epoch_start(self):
         self.train_ds.is_inference = True
-        self.train_ds.compute_pairs(self.args, None if not self.args.use_best_positive else self.ssl_model)
+        self.train_ds.compute_pairs(self.args, self.ssl_model)
         self.train_ds.is_inference = False
 
     def setup(self, stage):

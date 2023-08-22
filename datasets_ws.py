@@ -613,7 +613,6 @@ class PairsDataset(TripletsDataset):
     
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
-        self.database_negatives_ratio = args.database_negatives_ratio
         self.epsilon = args.aug_epsilon
         self.queries_per_epoch = args.queries_per_epoch
 
@@ -768,7 +767,7 @@ class PairsDataset(TripletsDataset):
             database_indexes = np.array(list(range(self.database_num)))
             soft_positives_indexes = np.unique(np.concatenate([self.soft_positives_per_query[i] for i in sampled_queries_indexes]))
             neg_indexes = np.setdiff1d(database_indexes, soft_positives_indexes, assume_unique=True)
-            sampled_negative_database_indexes = np.random.choice(neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=False)
+            sampled_negative_database_indexes = np.random.choice(neg_indexes, args.neg_samples_num, replace=False)
             for neg_index in sampled_negative_database_indexes:
                 self.pairs_global_indexes.append((neg_index, neg_index))
             self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)

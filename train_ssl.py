@@ -73,7 +73,7 @@ def main():
             args.num_devices = torch.cuda.device_count()
 
     # Initialize model
-    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds], args.train_batch_size)
+    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds])
 
     checkpoint_callback = ModelCheckpoint(
         monitor="val_recall5",
