@@ -20,4 +20,4 @@ def adjust_learning_rate(optimizer, epoch, args):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-    logging.debug('current lr:', lr)
+    logging.debug(f'current lr: {lr}')
