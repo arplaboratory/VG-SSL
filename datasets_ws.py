@@ -743,7 +743,7 @@ class PairsDataset(TripletsDataset):
     def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
-        sampled_queries_indexes = np.random.choice(self.queries_num, args.cache_refresh_rate, replace=False)
+        sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False)
         # Take all the positives
         positives_indexes = [self.hard_positives_per_query[i] for i in sampled_queries_indexes]
         positives_indexes = [p for pos in positives_indexes for p in pos]  # Flatten list of lists to a list
@@ -771,14 +771,14 @@ class PairsDataset(TripletsDataset):
             for neg_index in sampled_negative_database_indexes:
                 self.pairs_global_indexes.append((neg_index, neg_index))
             self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
-    
-    def compute_triplets_partial(self, args, model):
+            
+    def compute_pairs_partial(self, args, model):
         self.triplets_global_indexes = []
         # Take 1000 random queries
         if self.mining == "partial":
-            sampled_queries_indexes = np.random.choice(self.queries_num, args.cache_refresh_rate, replace=False)
+            sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False)
         elif self.mining == "msls_weighted":  # Pick night and sideways queries with higher probability
-            sampled_queries_indexes = np.random.choice(self.queries_num, args.cache_refresh_rate, replace=False, p=self.weights)
+            sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False, p=self.weights)
         
         # Sample 1000 random database images for the negatives
         sampled_database_indexes = np.random.choice(self.database_num, self.neg_samples_num, replace=False)
