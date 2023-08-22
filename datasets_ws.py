@@ -740,80 +740,72 @@ class PairsDataset(TripletsDataset):
             best_positive_index = self.hard_positives_per_query[query_index][best_positive_num[0]].item(
             )
         return best_positive_index
-        
+
     def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
-        # Enable oversampling
-        try:
-            sampled_queries_indexes = np.random.choice(
-                self.queries_num, args.queries_per_epoch, replace=False
-            )
-        except:
-            logging.debug("Oversampling queries")
-            sampled_queries_indexes = np.random.choice(
-                self.queries_num, args.queries_per_epoch, replace=True
-            )
+        sampled_queries_indexes = np.random.choice(self.queries_num, args.cache_refresh_rate, replace=False)
         # Take all the positives
-        positives_indexes = [
-            self.hard_positives_per_query[i] for i in sampled_queries_indexes
-        ]
-        positives_indexes = [
-            p for pos in positives_indexes for p in pos
-        ]  # Flatten list of lists to a list
+        positives_indexes = [self.hard_positives_per_query[i] for i in sampled_queries_indexes]
+        positives_indexes = [p for pos in positives_indexes for p in pos]  # Flatten list of lists to a list
         positives_indexes = list(np.unique(positives_indexes))
 
         # Compute the cache only for queries and their positives, in order to find the best positive
-        subset_ds = Subset(
-            self, positives_indexes +
-            list(sampled_queries_indexes + self.database_num)
-        )
-        if model is not None:
-            if args.n_layers != 0:
-                cache = self.compute_cache(
-                    args, model, subset_ds, (len(self), args.projection_size)
-                )
-            else:
-                cache = self.compute_cache(
-                    args, model, subset_ds, (len(self), args.features_dim)
-                )
+        subset_ds = Subset(self, positives_indexes + list(sampled_queries_indexes + self.database_num))
+        if args.n_layers != 0:
+            cache = self.compute_cache(args, model, subset_ds, (len(self), args.projection_size))
+        else:
+            cache = self.compute_cache(args, model, subset_ds, (len(self), args.features_dim))
 
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
-            if model is not None:
-                query_features = self.get_query_features(query_index, cache)
-                best_positive_index = self.get_best_positive_index(
-                args, query_index, cache, query_features
-                )
-            else:
-                best_positive_index = self.get_best_positive_index(
-                    args, query_index, None, None
-                )
-            self.pairs_global_indexes.append(
-                (query_index, best_positive_index)
-            )
-
-        if args.database_negatives_ratio > 0:
+            query_features = self.get_query_features(query_index, cache)
+            best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
+            self.pairs_global_indexes.append((query_index, best_positive_index))
+        # self.pairs_global_indexes is a tensor of shape [1000, 12]
+            
+        if args.neg_samples_num > 0:
             database_indexes = np.array(list(range(self.database_num)))
-            soft_positives_indexes = np.unique(np.concatenate([
-                self.soft_positives_per_query[i] for i in sampled_queries_indexes
-            ]))
-            neg_indexes = np.setdiff1d(
-                database_indexes, soft_positives_indexes, assume_unique=True
-            )
-            # Enable oversampling
-            try:
-                sampled_negative_database_indexes = np.random.choice(
-                    neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=False
-                )
-            except:
-                logging.debug("Oversampling negatives")
-                sampled_negative_database_indexes = np.random.choice(
-                    neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=True
-                )
+            soft_positives_indexes = np.unique(np.concatenate([self.soft_positives_per_query[i] for i in sampled_queries_indexes]))
+            neg_indexes = np.setdiff1d(database_indexes, soft_positives_indexes, assume_unique=True)
+            sampled_negative_database_indexes = np.random.choice(neg_indexes, round(args.queries_per_epoch * args.database_negatives_ratio), replace=False)
             for neg_index in sampled_negative_database_indexes:
-                self.pairs_global_indexes.append(
-                    (neg_index, neg_index)
-                )
-        # self.pairs_global_indexes is a tensor of shape [1000, 2]
+                self.pairs_global_indexes.append((neg_index, neg_index))
+            self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
+    
+    def compute_triplets_partial(self, args, model):
+        self.triplets_global_indexes = []
+        # Take 1000 random queries
+        if self.mining == "partial":
+            sampled_queries_indexes = np.random.choice(self.queries_num, args.cache_refresh_rate, replace=False)
+        elif self.mining == "msls_weighted":  # Pick night and sideways queries with higher probability
+            sampled_queries_indexes = np.random.choice(self.queries_num, args.cache_refresh_rate, replace=False, p=self.weights)
+        
+        # Sample 1000 random database images for the negatives
+        sampled_database_indexes = np.random.choice(self.database_num, self.neg_samples_num, replace=False)
+        # Take all the positives
+        positives_indexes = [self.hard_positives_per_query[i] for i in sampled_queries_indexes]
+        positives_indexes = [p for pos in positives_indexes for p in pos]
+        # Merge them into database_indexes and remove duplicates
+        database_indexes = list(sampled_database_indexes) + positives_indexes
+        database_indexes = list(np.unique(database_indexes))
+        
+        subset_ds = Subset(self, database_indexes + list(sampled_queries_indexes + self.database_num))
+        cache = self.compute_cache(args, model, subset_ds, cache_shape=(len(self), args.features_dim))
+        
+        # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
+        for query_index in tqdm(sampled_queries_indexes, ncols=100):
+            query_features = self.get_query_features(query_index, cache)
+            best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
+            
+            # Choose the hardest negatives within sampled_database_indexes, ensuring that there are no positives
+            soft_positives = self.soft_positives_per_query[query_index]
+            neg_indexes = np.setdiff1d(sampled_database_indexes, soft_positives, assume_unique=True)
+            
+            # Take all database images that are negatives and are within the sampled database images (aka database_indexes)
+            neg_indexes = self.get_hardest_negatives_indexes(args, cache, query_features, neg_indexes)
+            self.pairs_global_indexes.append((query_index, best_positive_index))
+            for neg_index in neg_indexes:
+                self.pairs_global_indexes.append((neg_index, neg_index))
+        # self.pairs_global_indexes is a tensor of shape [1000, 12]
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
