@@ -192,7 +192,7 @@ class MOCO(nn.Module):
 
         return x_gather[idx_this]
 
-    def forward(self, im_q, im_k, return_embedding=False, return_projection=True):
+    def forward(self, im_q, im_k, return_embedding = False, return_projection=True):
         """
         Input:
             im_q: a batch of query images
@@ -202,10 +202,13 @@ class MOCO(nn.Module):
         """
 
         if return_embedding:
-            return self.online_encoder(im_q, return_projection = return_projection)
+            if not return_projection:
+                return self.online_encoder(im_q, return_projection = False)
+            else:
+                return self.online_encoder(im_q, return_projection = True)
 
         # compute query features
-        q = self.online_encoder(im_q, return_projection = False)  # queries: NxC
+        q = self.online_encoder(im_q, return_projection = True)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
 
         # compute key features
@@ -214,7 +217,7 @@ class MOCO(nn.Module):
                 self.target_encoder = self.online_encoder
                 return
 
-            k = self.target_encoder(im_k, return_projection = False)  # keys: NxC
+            k = self.target_encoder(im_k, return_projection = True)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
         else:
             with torch.no_grad():  # no gradient to keys
@@ -228,7 +231,7 @@ class MOCO(nn.Module):
                     # shuffle for making use of BN
                     im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
-                k = self.target_encoder(im_k, return_projection = False)  # keys: NxC
+                k = self.target_encoder(im_k, return_projection = True)  # keys: NxC
                 k = nn.functional.normalize(k, dim=1)
 
                 if self.shuffle_bn:

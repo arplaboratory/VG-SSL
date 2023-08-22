@@ -128,7 +128,10 @@ class NetWrapper(nn.Module):
         self.aggregation = aggregation
         self.n_layers = n_layers
 
-        self.projector = None
+        if self.n_layers > 0:
+            self.aggregation_before_proj = self.aggregation[0]
+        else:
+            self.aggregation_before_proj = self.aggregation
         self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
 
@@ -137,29 +140,15 @@ class NetWrapper(nn.Module):
         else:
             raise NotImplementedError()
 
-    def _get_projector(self, hidden):
-        _, dim = hidden.shape
-        # Projector implemented in aggregation
-        projector = nn.Identity()
-        return projector.to(hidden)
-
-    def get_representation(self, x):
-        if self.aggregation is not None:
+    def get_representation(self, x, return_projection = True):
+        if return_projection:
             return self.aggregation(self.net(x))
         else:
-            return self.net(x)
+            return self.aggregation_before_proj(self.net(x))
 
     def forward(self, x, return_projection = True):
-        representation = self.get_representation(x)
-
-        if not return_projection:
-            return representation
-
-        if self.projector is None:
-            self.projector = self._get_projector(representation)
-
-        projection = self.projector(representation)
-        return projection, representation
+        representation = self.get_representation(x, return_projection)
+        return representation
 
 # main class
 
@@ -231,13 +220,16 @@ class BYOL(nn.Module):
         # assert not (self.training and x.shape[0] == 1), 'you must have greater than 1 sample when training, due to the batchnorm in the projection layer'
 
         if return_embedding:
-            return self.online_encoder(x, return_projection = return_projection)
+            if not return_projection:
+                return self.online_encoder(x, return_projection = False)
+            else:
+                return self.online_encoder(x, return_projection = True)
 
         # image one and two are proceeded outsides
         image_one, image_two = x, y
 
-        online_proj_one = self.online_encoder(image_one, return_projection = False)
-        online_proj_two = self.online_encoder(image_two, return_projection = False)
+        online_proj_one = self.online_encoder(image_one, return_projection = True)
+        online_proj_two = self.online_encoder(image_two, return_projection = True)
 
         if self.online_predictor is None:
             _, dim = online_proj_one.shape
@@ -251,8 +243,8 @@ class BYOL(nn.Module):
                 self.target_encoder = self._get_target_encoder()
             
             target_encoder =  self.target_encoder if self.use_momentum else self.online_encoder
-            target_proj_one = target_encoder(image_one, return_projection = False)
-            target_proj_two = target_encoder(image_two, return_projection = False)
+            target_proj_one = target_encoder(image_one, return_projection = True)
+            target_proj_two = target_encoder(image_two, return_projection = True)
             target_proj_one.detach_()
             target_proj_two.detach_()
 

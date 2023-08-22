@@ -435,7 +435,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
                                              nn.Linear(args.features_dim, args.fc_output_dim),
                                              L2Norm())
             args.features_dim = args.fc_output_dim
-        if args.n_layers != 0:
+        if args.n_layers > 0:
              self.aggregation = attach_projection_layers(args, self.backbone, self.aggregation, args.resize, args.projection_size)
         self.arch_name = args.backbone
         self.return_loss = False
@@ -501,12 +501,9 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         else:
             raise NotImplementedError()
 
-    def forward(self, x, pairs_local_indexes=None, return_feature=False):
-        if return_feature:
-            if self.args.ssl_method == "byol" or self.args.ssl_method == "simsiam" or self.args.ssl_method == "vicreg" or self.args.ssl_method == "bt" or self.args.ssl_method == "mocov2" or self.args.ssl_method == "simclr":
-                feature = self.ssl_model(x, None, return_embedding=True, return_projection=False)
-            else:
-                raise NotImplementedError()
+    def forward(self, x, pairs_local_indexes=None, return_embedding=False, return_projection=True):
+        if return_embedding:
+            feature = self.ssl_model(x, None, return_embedding=True, return_projection=return_projection)
             return feature
         if pairs_local_indexes is None:
             raise NotImplementedError("pairs indexes should be pass if not return_feature")
@@ -595,7 +592,10 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     
     def _shared_on_eval_epoch_start(self, eval_ds, args):
         if self.trainer.is_global_zero:
-            self.all_features = torch.empty((len(eval_ds), self.args.features_dim), dtype=torch.float32, device="cpu")
+            if self.args.discard_proj:
+                self.all_features = torch.empty((len(eval_ds), self.args.features_dim), dtype=torch.float32, device="cpu")
+            else:
+                self.all_features = torch.empty((len(eval_ds), self.args.projection_size), dtype=torch.float32, device="cpu")
 
     def _shared_eval_step(self, eval_ds, inputs):
         images, indices = inputs
