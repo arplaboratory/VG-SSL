@@ -641,7 +641,7 @@ class PairsDataset(TripletsDataset):
             return super().__getitem__(index)
 
         query_index, best_positive_index = torch.split(self.pairs_global_indexes[index], (1, 1))
-        if index >= self.queries_per_epoch:
+        if index < self.queries_per_epoch:
             query     = self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
             positive  = self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
         else:
@@ -696,7 +696,6 @@ class PairsDataset(TripletsDataset):
         # RAMEfficient2DMatrix can be replaced by np.zeros, but using
         # RAMEfficient2DMatrix is RAM efficient for full database mining.
         cache = RAMEfficient2DMatrix(cache_shape, dtype=np.float32)
-        
         with torch.no_grad():
             for images, indices in tqdm(subset_dl, ncols=100):
                 images = images.to(args.device)
@@ -750,7 +749,6 @@ class PairsDataset(TripletsDataset):
         positives_indexes = [self.hard_positives_per_query[i] for i in sampled_queries_indexes]
         positives_indexes = [p for pos in positives_indexes for p in pos]  # Flatten list of lists to a list
         positives_indexes = list(np.unique(positives_indexes))
-
         # Compute the cache only for queries and their positives, in order to find the best positive
         subset_ds = Subset(self, positives_indexes + list(sampled_queries_indexes + self.database_num))
         if args.n_layers > 0:
@@ -775,7 +773,8 @@ class PairsDataset(TripletsDataset):
             self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
             
     def compute_pairs_partial(self, args, model):
-        self.triplets_global_indexes = []
+        self.pairs_global_indexes = []
+        negative_indexes = []
         # Take 1000 random queries
         if self.mining == "partial":
             sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False)
@@ -807,6 +806,8 @@ class PairsDataset(TripletsDataset):
             neg_indexes = self.get_hardest_negatives_indexes(args, cache, query_features, neg_indexes)
             self.pairs_global_indexes.append((query_index, best_positive_index))
             for neg_index in neg_indexes:
-                self.pairs_global_indexes.append((neg_index, neg_index))
+                negative_indexes.append(neg_index)
         # self.pairs_global_indexes is a tensor of shape [1000, 12]
+        negative_indexes = list(np.unique(negative_indexes))
+        self.pairs_global_indexes = self.pairs_global_indexes + negative_indexes
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
