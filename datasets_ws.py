@@ -795,7 +795,10 @@ class PairsDataset(TripletsDataset):
         database_indexes = list(np.unique(database_indexes))
         
         subset_ds = Subset(self, database_indexes + list(sampled_queries_indexes + self.database_num))
-        cache = self.compute_cache(args, model, subset_ds, cache_shape=(len(self), args.features_dim))
+        if args.n_layers > 0:
+            cache = self.compute_cache(args, model, subset_ds, (len(self), args.projection_size))
+        else:
+            cache = self.compute_cache(args, model, subset_ds, (len(self), args.features_dim))
         
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
