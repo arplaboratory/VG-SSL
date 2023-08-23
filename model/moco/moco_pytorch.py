@@ -192,7 +192,7 @@ class MOCO(nn.Module):
 
         return x_gather[idx_this]
 
-    def forward(self, im_q, im_k, return_embedding = False, return_projection=True):
+    def forward(self, im_q, im_k, return_embedding = False, return_projection = True):
         """
         Input:
             im_q: a batch of query images

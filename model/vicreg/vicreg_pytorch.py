@@ -81,7 +81,7 @@ class VICREG(nn.Module):
         self.mlp += str(projection_size)
         self.num_features = int(self.mlp.split("-")[-1])
         
-        if self.n_layers > 0:
+        if n_layers > 0:
             self.aggregation_before_proj = self.aggregation[0]
         else:
             self.aggregation_before_proj = self.aggregation

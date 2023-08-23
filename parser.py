@@ -96,6 +96,11 @@ def parse_arguments():
         action="store_true",
         help="Choose if we use use_database_aug only for SSL training."
     )
+    parser.add_argument(
+        "--eval_with_proj",
+        action="store_true",
+        help="Choose if we use use_database_aug only for SSL training."
+    )
     #########################################################################
     parser.add_argument(
         "--train_batch_size",

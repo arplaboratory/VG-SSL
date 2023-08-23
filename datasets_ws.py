@@ -664,6 +664,8 @@ class PairsDataset(TripletsDataset):
         self.is_inference = True
         if self.mining == "random":
             self.compute_pairs_random(args, model)
+        elif self.mining == "partial":
+            self.compute_pairs_partial(args, model)
         else:
             raise NotImplementedError()
 
@@ -699,7 +701,7 @@ class PairsDataset(TripletsDataset):
             for images, indices in tqdm(subset_dl, ncols=100):
                 images = images.to(args.device)
                 indices = indices.to(args.device)
-                features = model(images, None, return_embedding=True, return_projection=False)
+                features = model(images, None, return_embedding=True, return_projection=True)
                 if not (args.num_nodes == 1 and args.num_devices == 1):
                     features_list = [torch.zeros_like(features) for i in range(args.num_devices * args.num_nodes)]
                     indices_list = [torch.zeros_like(indices) for i in range(args.num_devices * args.num_nodes)]
@@ -751,7 +753,7 @@ class PairsDataset(TripletsDataset):
 
         # Compute the cache only for queries and their positives, in order to find the best positive
         subset_ds = Subset(self, positives_indexes + list(sampled_queries_indexes + self.database_num))
-        if args.n_layers != 0:
+        if args.n_layers > 0:
             cache = self.compute_cache(args, model, subset_ds, (len(self), args.projection_size))
         else:
             cache = self.compute_cache(args, model, subset_ds, (len(self), args.features_dim))

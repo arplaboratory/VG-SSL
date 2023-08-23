@@ -592,14 +592,14 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     
     def _shared_on_eval_epoch_start(self, eval_ds, args):
         if self.trainer.is_global_zero:
-            if self.args.discard_proj:
+            if not self.args.eval_with_proj:
                 self.all_features = torch.empty((len(eval_ds), self.args.features_dim), dtype=torch.float32, device="cpu")
             else:
                 self.all_features = torch.empty((len(eval_ds), self.args.projection_size), dtype=torch.float32, device="cpu")
 
     def _shared_eval_step(self, eval_ds, inputs):
         images, indices = inputs
-        features = self.forward(images, return_feature=True)
+        features = self.forward(images, return_embedding=True, return_projection=self.args.eval_with_proj)
         features = self.all_gather(features)
         indices = self.all_gather(indices)
         if self.trainer.is_global_zero:
@@ -613,7 +613,10 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         queries_features = F.normalize(queries_features, dim=1)
         database_features = F.normalize(database_features, dim=1)
 
-        faiss_index = faiss.IndexFlatL2(args.features_dim)
+        if args.eval_with_proj:
+            faiss_index = faiss.IndexFlatL2(args.projection_size)
+        else:
+            faiss_index = faiss.IndexFlatL2(args.features_dim)
         faiss_index.add(database_features)
         del database_features, self.all_features
         self.all_features = None
