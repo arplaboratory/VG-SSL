@@ -774,7 +774,7 @@ class PairsDataset(TripletsDataset):
             sampled_negative_database_indexes = np.random.choice(neg_indexes, args.neg_samples_num, replace=False)
             for neg_index in sampled_negative_database_indexes:
                 self.pairs_global_indexes.append((neg_index, neg_index))
-            self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
+        self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
             
     def compute_pairs_partial(self, args, model):
         self.pairs_global_indexes = []
