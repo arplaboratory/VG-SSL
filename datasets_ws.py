@@ -648,8 +648,12 @@ class PairsDataset(TripletsDataset):
             query     = self.query_transform(path_to_pil_img(self.database_paths[query_index]))
             positive  = self.resized_transform(path_to_pil_img(self.database_paths[query_index]))
         images = torch.stack((query, positive), 0)
-        utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
-                         torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0)), dim=0)
+        if index < self.queries_per_epoch:
+            utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
+                            torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0)), dim=0)
+        else:
+            utm = torch.cat((torch.tensor(self.database_utms[query_index]).unsqueeze(0),
+                            torch.tensor(self.database_utms[query_index]).unsqueeze(0)), dim=0)
         pairs_local_indexes = torch.tensor([0, 1], dtype=torch.int)
         return images, pairs_local_indexes, self.pairs_global_indexes[index], utm
 
