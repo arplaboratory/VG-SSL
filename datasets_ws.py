@@ -744,7 +744,24 @@ class PairsDataset(TripletsDataset):
             best_positive_index = self.hard_positives_per_query[query_index][best_positive_num[0]].item(
             )
         return best_positive_index
-
+    
+    def get_hardest_negatives_indexes(self, args, cache, query_features, neg_samples):
+        neg_features = cache[neg_samples]
+        if args.n_layers > 0:
+            faiss_index = faiss.IndexFlatL2(args.projection_size)
+        else:
+            faiss_index = faiss.IndexFlatL2(args.features_dim)
+        faiss_index.add(neg_features)
+        # Search the 10 nearest negatives (further than 25 meters and nearest in features space)
+        _, neg_nums = faiss_index.search(
+            query_features.reshape(1, -1), self.negs_num_per_query
+        )
+        neg_nums = neg_nums.reshape(-1)
+        neg_indexes = neg_samples[neg_nums].astype(np.int32)
+        if not hasattr(neg_indexes, "__len__"):
+            neg_indexes = np.expand_dims(neg_indexes, 0)
+        return neg_indexes
+    
     def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
