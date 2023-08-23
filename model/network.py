@@ -569,7 +569,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
 
     def training_step(self, inputs, _):
         if self.args.method == "pair":
-            images, pairs_local_indexes, _ = inputs
+            images, pairs_local_indexes, _, _ = inputs
             # Flip all pairs or none
             if self.args.horizontal_flip:
                 images = transforms.RandomHorizontalFlip()(images)
