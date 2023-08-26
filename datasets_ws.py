@@ -38,14 +38,14 @@ inv_base_transforms = transforms.Compose(
 
 def path_to_pil_img(path):
     count = 0
-    while count < 10:
+    while count < 1000:
         try:
             img = Image.open(path).convert("RGB")
             return img
         except Exception:
             logging.debug(f"Retry: {path}")
             count += 1
-    raise KeyError("Have tried 10 times. Give up")
+    raise KeyError("Have tried 1000 times. Give up")
 
 def collate_fn(batch):
     """Creates mini-batch tensors from the list of tuples (images, 
@@ -833,5 +833,6 @@ class PairsDataset(TripletsDataset):
                 negative_indexes.append(neg_index)
         # self.pairs_global_indexes is a tensor of shape [1000, 12]
         negative_indexes = list(np.unique(negative_indexes))
-        self.pairs_global_indexes = self.pairs_global_indexes + negative_indexes
+        negative_pairs_indexes = [(idx, idx) for idx in negative_indexes]
+        self.pairs_global_indexes = self.pairs_global_indexes + negative_pairs_indexes
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
