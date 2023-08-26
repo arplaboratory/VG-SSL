@@ -9,6 +9,6 @@
 #SBATCH --output=precompute.out
 
 singularity exec --nv \
-                 --overlay ../mapillary_sls.sqf:ro \
+                 --overlay /vast/jx1190/mapillary_sls.sqf:ro \
                  /scratch/work/public/singularity/cuda11.6.124-cudnn8.4.0.27-devel-ubuntu20.04.4.sif \
                  /bin/bash -c "source ~/.bashrc; conda activate VG_SSL; python3 -u pre_compute_mining.py --backbone "$1" --resume "$2
