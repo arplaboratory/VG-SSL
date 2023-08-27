@@ -639,22 +639,38 @@ class PairsDataset(TripletsDataset):
         if self.is_inference:
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
             return super().__getitem__(index)
-
-        query_index, best_positive_index = torch.split(self.pairs_global_indexes[index], (1, 1))
-        if index < self.queries_per_epoch:
+   
+        if self.args.pair_negative:
+            query_index, best_positive_index, neg_indexes = torch.split(self.pairs_global_indexes[index], (1,1,self.negs_num_per_query))
             query     = self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
             positive  = self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
+            negatives = [self.resized_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
+            images = torch.stack((query, positive, *negatives), 0)
+            if self.negs_num_per_query == 1:
+                utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
+                                torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0),
+                                torch.tensor(self.database_utms[neg_indexes]).unsqueeze(0)), dim=0)
+            else:
+                utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
+                            torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0),
+                            torch.tensor(self.database_utms[neg_indexes])),dim=0)
+            pairs_local_indexes = torch.empty([i for i in range(1+1+len(negatives))], dtype=torch.int)
         else:
-            query     = self.query_transform(path_to_pil_img(self.database_paths[query_index]))
-            positive  = self.resized_transform(path_to_pil_img(self.database_paths[query_index]))
-        images = torch.stack((query, positive), 0)
-        if index < self.queries_per_epoch:
-            utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
-                            torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0)), dim=0)
-        else:
-            utm = torch.cat((torch.tensor(self.database_utms[query_index]).unsqueeze(0),
-                            torch.tensor(self.database_utms[query_index]).unsqueeze(0)), dim=0)
-        pairs_local_indexes = torch.tensor([0, 1], dtype=torch.int)
+            query_index, best_positive_index = torch.split(self.pairs_global_indexes[index], (1,1))
+            if index < self.queries_per_epoch:
+                query     = self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
+                positive  = self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
+            else:
+                query     = self.query_transform(path_to_pil_img(self.database_paths[query_index]))
+                positive  = self.resized_transform(path_to_pil_img(self.database_paths[query_index]))
+            images = torch.stack((query, positive), 0)
+            if index < self.queries_per_epoch:
+                utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
+                                torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0)), dim=0)
+            else:
+                utm = torch.cat((torch.tensor(self.database_utms[query_index]).unsqueeze(0),
+                                torch.tensor(self.database_utms[query_index]).unsqueeze(0)), dim=0)
+            pairs_local_indexes = torch.tensor([0, 1], dtype=torch.int)
         return images, pairs_local_indexes, self.pairs_global_indexes[index], utm
 
     def __len__(self):
@@ -828,11 +844,15 @@ class PairsDataset(TripletsDataset):
             
             # Take all database images that are negatives and are within the sampled database images (aka database_indexes)
             neg_indexes = self.get_hardest_negatives_indexes(args, cache, query_features, neg_indexes)
-            self.pairs_global_indexes.append((query_index, best_positive_index))
-            for neg_index in neg_indexes:
-                negative_indexes.append(neg_index)
+            if args.pair_negative:
+                self.pairs_global_indexes.append((query_index, best_positive_index, *neg_indexes))
+            else:
+                self.pairs_global_indexes.append((query_index, best_positive_index))
+                for neg_index in neg_indexes:
+                    negative_indexes.append(neg_index)
         # self.pairs_global_indexes is a tensor of shape [1000, 12]
-        negative_indexes = list(np.unique(negative_indexes))
-        negative_pairs_indexes = [(idx, idx) for idx in negative_indexes]
-        self.pairs_global_indexes = self.pairs_global_indexes + negative_pairs_indexes
+        if not args.pair_negative:
+            negative_indexes = list(np.unique(negative_indexes))
+            negative_pairs_indexes = [(idx, idx) for idx in negative_indexes]
+            self.pairs_global_indexes = self.pairs_global_indexes + negative_pairs_indexes
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)

@@ -507,10 +507,20 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return feature
         if pairs_local_indexes is None:
             raise NotImplementedError("pairs indexes should be pass if not return_feature")
-        x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):2].long()
-        y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):2].long()
-        input_x = x[x_indexes]
-        input_y = x[y_indexes]
+        if self.args.pair_negative:
+            x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):1+1+self.args.negs_num_per_query].long()
+            y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):1+1+self.args.negs_num_per_query].long()
+            input_x = x[x_indexes]
+            input_y = x[y_indexes]
+            for i in range(2, 1+1+self.args.negs_num_per_query):
+                neg_indexes = pairs_local_indexes[i:len(pairs_local_indexes):1+1+self.args.negs_num_per_query].long()
+                input_x = torch.cat([input_x, x[neg_indexes]], dim=0)
+                input_y = torch.cat([input_y, x[neg_indexes]], dim=0)
+        else:
+            x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):2].long()
+            y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):2].long()
+            input_x = x[x_indexes]
+            input_y = x[y_indexes]
         if self.args.visualize_input:
             visualize(input_x, "query")
             visualize(input_y, "positive")

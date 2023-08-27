@@ -100,6 +100,11 @@ def parse_arguments():
         "--eval_with_proj",
         action="store_true",
         help="Choose if we use use_database_aug only for SSL training."
+    )    
+    parser.add_argument(
+        "--pair_negative",
+        action="store_true",
+        help="Make hard negatives in one batch"
     )
     #########################################################################
     parser.add_argument(
@@ -412,5 +417,8 @@ def parse_arguments():
     if args.pca_dim != None and args.pca_dataset_folder == None:
         raise ValueError("Please specify --pca_dataset_folder when using pca")
 
+    if args.pair_negative and not args.mining == 'partial':
+        return ValueError()
+    
     return args
     
