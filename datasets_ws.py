@@ -609,10 +609,10 @@ class PairsDataset(TripletsDataset):
         args,
         datasets_folder="datasets",
         dataset_name="pitts30k",
-        split="train"
+        split="train",
     
     ):
-        super().__init__(args, datasets_folder, dataset_name, split)
+        super().__init__(args, datasets_folder, dataset_name, split, negs_num_per_query=args.negs_num_per_query)
         self.epsilon = args.aug_epsilon
         self.queries_per_epoch = args.queries_per_epoch
 
@@ -654,7 +654,7 @@ class PairsDataset(TripletsDataset):
                 utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
                             torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0),
                             torch.tensor(self.database_utms[neg_indexes])),dim=0)
-            pairs_local_indexes = torch.empty([i for i in range(1+1+len(negatives))], dtype=torch.int)
+            pairs_local_indexes = torch.tensor([i for i in range(1+1+len(negatives))], dtype=torch.int)
         else:
             query_index, best_positive_index = torch.split(self.pairs_global_indexes[index], (1,1))
             if index < self.queries_per_epoch:
