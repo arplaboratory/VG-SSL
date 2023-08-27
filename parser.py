@@ -1,7 +1,7 @@
 import os
 import torch
 import argparse
-
+import logging
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -418,7 +418,10 @@ def parse_arguments():
         raise ValueError("Please specify --pca_dataset_folder when using pca")
 
     if args.pair_negative and not args.mining == 'partial':
-        return ValueError()
+        raise ValueError()
     
+    if args.pair_negative and divmod(args.train_batch_size, args.negs_num_per_query + 1)[1] != 0:
+        raise ValueError()
+
     return args
     

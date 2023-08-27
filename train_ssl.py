@@ -34,6 +34,9 @@ def main():
     commons.make_deterministic(args.seed)
     logging.info(f"Arguments: {args}")
     wandb_logger = WandbLogger(project="vg-ssl", entity="vg-ssl")
+    if args.pair_negative:
+        args.train_batch_size = args.train_batch_size // (args.negs_num_per_query + 1)
+        logging.info("Pair negative is enable. The actual batch size is train_batch_size * (1+args.negs_num_per_query)")
     logging.info(f"The outputs are being saved in {args.save_dir}")
     logging.info(
         f"Using {torch.cuda.device_count()} GPUs and {multiprocessing.cpu_count()} CPUs"
