@@ -450,7 +450,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return BYOL(self.backbone,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
-                        projection_size = self.args.projection_size,
+                        projection_size = self.args.projection_size if self.args.n_layers > 0 else self.args.features_dim,
                         aggregation = self.aggregation,
                         moving_average_decay = self.args.momentum,
                         n_layers = self.args.n_layers)
@@ -459,7 +459,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return BYOL(self.backbone,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
-                        projection_size = self.args.projection_size,
+                        projection_size = self.args.projection_size if self.args.n_layers > 0 else self.args.features_dim,
                         aggregation = self.aggregation,
                         use_momentum=False,
                         n_layers = self.args.n_layers)
@@ -468,7 +468,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return VICREG(self.backbone,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
-                        projection_size = self.args.projection_size,
+                        projection_size = self.args.projection_size if self.args.n_layers > 0 else self.args.features_dim,
                         aggregation = self.aggregation,
                         n_layers = self.args.n_layers)
         elif self.args.ssl_method == "bt":
@@ -476,7 +476,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return VICREG(self.backbone,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
-                        projection_size = self.args.projection_size,
+                        projection_size = self.args.projection_size if self.args.n_layers > 0 else self.args.features_dim,
                         aggregation = self.aggregation,
                         use_bt_loss = True,
                         n_layers = self.args.n_layers)
@@ -485,7 +485,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return MOCO(self.backbone,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
-                        projection_size = self.args.projection_size,
+                        projection_size = self.args.projection_size if self.args.n_layers > 0 else self.args.features_dim,
                         aggregation = self.aggregation,
                         K = self.args.queue_size,
                         n_layers = self.args.n_layers)
@@ -494,7 +494,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             return MOCO(self.backbone,
                         image_size = self.args.resize,
                         gpus_num = self.args.num_nodes * self.args.num_devices,
-                        projection_size = self.args.projection_size,
+                        projection_size = self.args.projection_size if self.args.n_layers > 0 else self.args.features_dim,
                         aggregation = self.aggregation,
                         use_simclr = True,
                         n_layers = self.args.n_layers)
