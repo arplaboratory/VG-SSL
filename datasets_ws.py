@@ -536,6 +536,18 @@ class TripletsDataset(BaseDataset):
         # self.triplets_global_indexes is a tensor of shape [1000, 12]
         self.triplets_global_indexes = torch.tensor(self.triplets_global_indexes)
     
+    def search_positive_negative(self, args, query_index, cache, sampled_database_indexes):
+        query_features = self.get_query_features(query_index, cache)
+        best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
+        
+        # Choose the hardest negatives within sampled_database_indexes, ensuring that there are no positives
+        soft_positives = self.soft_positives_per_query[query_index]
+        neg_indexes = np.setdiff1d(sampled_database_indexes, soft_positives, assume_unique=True)
+        # Take all database images that are negatives and are within the sampled database images (aka database_indexes)
+        neg_indexes = self.get_hardest_negatives_indexes(args, cache, query_features, neg_indexes)
+        local_result = (query_index, best_positive_index, *neg_indexes)
+        return local_result
+        
     def compute_triplets_partial(self, args, model):
         self.triplets_global_indexes = []
         # Take 1000 random queries
@@ -557,17 +569,14 @@ class TripletsDataset(BaseDataset):
         cache = self.compute_cache(args, model, subset_ds, cache_shape=(len(self), args.features_dim))
         
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
+        pool = ThreadPool(args.num_workers)
+        results = []
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
-            query_features = self.get_query_features(query_index, cache)
-            best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
-            
-            # Choose the hardest negatives within sampled_database_indexes, ensuring that there are no positives
-            soft_positives = self.soft_positives_per_query[query_index]
-            neg_indexes = np.setdiff1d(sampled_database_indexes, soft_positives, assume_unique=True)
-            
-            # Take all database images that are negatives and are within the sampled database images (aka database_indexes)
-            neg_indexes = self.get_hardest_negatives_indexes(args, cache, query_features, neg_indexes)
-            self.triplets_global_indexes.append((query_index, best_positive_index, *neg_indexes))
+            results.append(pool.apply_async(self.search_positive_negative, (args, query_index, cache, sampled_database_indexes)))
+        pool.close()
+        for i in tqdm(range(len(results)), ncols=100):
+            self.triplets_global_indexes.append(results[i].get())
+        pool.join()
         # self.triplets_global_indexes is a tensor of shape [1000, 12]
         self.triplets_global_indexes = torch.tensor(self.triplets_global_indexes)
 
@@ -810,7 +819,7 @@ class PairsDataset(TripletsDataset):
                 self.pairs_global_indexes.append((neg_index, neg_index))
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
 
-    def search_positive_negative(self, args, query_index, cache, sampled_database_indexes):
+    def search_positive_negative_pair(self, args, query_index, cache, sampled_database_indexes):
         query_features = self.get_query_features(query_index, cache)
         best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
         
@@ -854,7 +863,7 @@ class PairsDataset(TripletsDataset):
         pool = ThreadPool(args.num_workers)
         results = []
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
-            results.append(pool.apply_async(self.search_positive_negative, (args, query_index, cache, sampled_database_indexes)))
+            results.append(pool.apply_async(self.search_positive_negative_pair, (args, query_index, cache, sampled_database_indexes)))
         pool.close()
         for i in tqdm(range(len(results)), ncols=100):
             local_result, local_negative_indexes = results[i].get()
