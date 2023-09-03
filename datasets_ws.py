@@ -824,7 +824,7 @@ class PairsDataset(TripletsDataset):
             return local_result, None
         else:
             local_result = (query_index, best_positive_index)
-            return local_result, neg_indexes
+            return local_result, list(neg_indexes)
 
     def compute_pairs_partial(self, args, model):
         self.pairs_global_indexes = []
@@ -853,8 +853,8 @@ class PairsDataset(TripletsDataset):
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
         pool = ThreadPool(args.num_workers)
         results = []
-        for query_index in tqdm(sampled_queries_indexes):
-            results.append((self.search_positive_negative(args, query_index, cache, sampled_database_indexes)))
+        for query_index in tqdm(sampled_queries_indexes, ncols=100):
+            results.append(pool.apply_async(self.search_positive_negative, (args, query_index, cache, sampled_database_indexes)))
         pool.close()
         for i in tqdm(range(len(results)), ncols=100):
             local_result, local_negative_indexes = results[i].get()
@@ -862,8 +862,7 @@ class PairsDataset(TripletsDataset):
                 self.pairs_global_indexes.append(local_result)
             else:
                 self.pairs_global_indexes.append(local_result)
-                for neg_index in local_negative_indexes:
-                    negative_indexes.append(neg_index)
+                negative_indexes = negative_indexes + local_negative_indexes
         pool.join()
         # self.pairs_global_indexes is a tensor of shape [1000, 12]
         if not args.pair_negative:
