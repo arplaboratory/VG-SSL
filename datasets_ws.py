@@ -18,7 +18,8 @@ from PIL import ImageOps, ImageFilter
 from torchvision.transforms import InterpolationMode
 from torch.distributed import all_gather, broadcast, barrier
 from mapillary_sls.mapillary_sls.datasets.msls import MSLS
-
+from multiprocessing.pool import ThreadPool, Pool
+from time import time
 imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std = [0.229, 0.224, 0.225]
 base_transform = transforms.Compose(
@@ -808,7 +809,23 @@ class PairsDataset(TripletsDataset):
             for neg_index in sampled_negative_database_indexes:
                 self.pairs_global_indexes.append((neg_index, neg_index))
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
-            
+
+    def search_positive_negative(self, args, query_index, cache, sampled_database_indexes):
+        query_features = self.get_query_features(query_index, cache)
+        best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
+        
+        # Choose the hardest negatives within sampled_database_indexes, ensuring that there are no positives
+        soft_positives = self.soft_positives_per_query[query_index]
+        neg_indexes = np.setdiff1d(sampled_database_indexes, soft_positives, assume_unique=True)
+        # Take all database images that are negatives and are within the sampled database images (aka database_indexes)
+        neg_indexes = self.get_hardest_negatives_indexes(args, cache, query_features, neg_indexes)
+        if args.pair_negative:
+            local_result = (query_index, best_positive_index, *neg_indexes)
+            return local_result, None
+        else:
+            local_result = (query_index, best_positive_index)
+            return local_result, neg_indexes
+
     def compute_pairs_partial(self, args, model):
         self.pairs_global_indexes = []
         negative_indexes = []
@@ -834,22 +851,20 @@ class PairsDataset(TripletsDataset):
             cache = self.compute_cache(args, model, subset_ds, (len(self), args.features_dim))
         
         # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
-        for query_index in tqdm(sampled_queries_indexes, ncols=100):
-            query_features = self.get_query_features(query_index, cache)
-            best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
-            
-            # Choose the hardest negatives within sampled_database_indexes, ensuring that there are no positives
-            soft_positives = self.soft_positives_per_query[query_index]
-            neg_indexes = np.setdiff1d(sampled_database_indexes, soft_positives, assume_unique=True)
-            
-            # Take all database images that are negatives and are within the sampled database images (aka database_indexes)
-            neg_indexes = self.get_hardest_negatives_indexes(args, cache, query_features, neg_indexes)
+        pool = ThreadPool(args.num_workers)
+        results = []
+        for query_index in tqdm(sampled_queries_indexes):
+            results.append((self.search_positive_negative(args, query_index, cache, sampled_database_indexes)))
+        pool.close()
+        for i in tqdm(range(len(results)), ncols=100):
+            local_result, local_negative_indexes = results[i].get()
             if args.pair_negative:
-                self.pairs_global_indexes.append((query_index, best_positive_index, *neg_indexes))
+                self.pairs_global_indexes.append(local_result)
             else:
-                self.pairs_global_indexes.append((query_index, best_positive_index))
-                for neg_index in neg_indexes:
+                self.pairs_global_indexes.append(local_result)
+                for neg_index in local_negative_indexes:
                     negative_indexes.append(neg_index)
+        pool.join()
         # self.pairs_global_indexes is a tensor of shape [1000, 12]
         if not args.pair_negative:
             negative_indexes = list(np.unique(negative_indexes))
