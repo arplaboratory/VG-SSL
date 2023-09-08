@@ -420,7 +420,7 @@ def parse_arguments():
     if args.pair_negative and not args.mining == 'partial':
         raise ValueError()
     
-    if args.pair_negative and divmod(args.train_batch_size, args.negs_num_per_query + 1)[1] != 0:
+    if args.pair_negative and divmod(args.train_batch_size, 2)[1] != 0:
         raise ValueError()
 
     return args
