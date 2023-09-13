@@ -512,7 +512,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):1+1+self.args.negs_num_per_query].long()
             input_x = x[x_indexes]
             input_y = x[y_indexes]
-            for i in range(2, 1+1+self.args.negs_num_per_query):
+            for i in range(2, 3):
                 neg_indexes = pairs_local_indexes[i:len(pairs_local_indexes):1+1+self.args.negs_num_per_query].long()
                 input_x = torch.cat([input_x, x[neg_indexes]], dim=0)
                 input_y = torch.cat([input_y, x[neg_indexes]], dim=0)
@@ -573,7 +573,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             num_workers=self.args.num_workers,
             batch_size=self.args.infer_batch_size,
             pin_memory=False,
-            shuffle=True
+            shuffle=False
         )
         return test_dataloader
 

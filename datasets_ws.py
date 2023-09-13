@@ -66,7 +66,7 @@ def collate_fn(batch):
     """
     if len(batch[0][0]) > 3:
         duplicate_num = 0
-        picked_elements = torch.ones(len(batch[0][0]) - 2).long() * -1
+        picked_elements = torch.ones(len(batch)).long() * -1
         for i in range(len(batch)):
             find_unique = False
             for j in range(2, len(batch[i][2])):
