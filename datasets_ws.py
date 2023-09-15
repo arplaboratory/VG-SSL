@@ -67,21 +67,24 @@ def collate_fn(batch):
     if len(batch[0][0]) > 3:
         duplicate_num = 0
         picked_elements = torch.ones(len(batch)).long() * -1
+        picked_indexes = torch.ones(len(batch)).long() * -1
         for i in range(len(batch)):
             find_unique = False
             for j in range(2, len(batch[i][2])):
                 if not batch[i][2][j] in picked_elements:
                     find_unique = True
-                    picked_elements[i] = j
+                    picked_elements[i] = batch[i][2][j]
+                    picked_indexes[i] = j
                     break
             if not find_unique:
                 duplicate_num += 1
-                picked_elements[i] = 2
+                picked_elements[i] = batch[i][2][2]
+                picked_indexes[i] = 2
             new_batch_item = (
-                              torch.stack([batch[i][0][0], batch[i][0][1], batch[i][0][picked_elements[i]]], dim=0),
-                              torch.stack([batch[i][1][0], batch[i][1][1], batch[i][1][picked_elements[i]]], dim=0),
-                              torch.stack([batch[i][2][0], batch[i][2][1], batch[i][2][picked_elements[i]]], dim=0),
-                              torch.stack([batch[i][3][0], batch[i][3][1], batch[i][3][picked_elements[i]]], dim=0)
+                              torch.stack([batch[i][0][0], batch[i][0][1], batch[i][0][picked_indexes[i]]], dim=0),
+                              torch.stack([batch[i][1][0], batch[i][1][1], batch[i][1][picked_indexes[i]]], dim=0),
+                              torch.stack([batch[i][2][0], batch[i][2][1], batch[i][2][picked_indexes[i]]], dim=0),
+                              torch.stack([batch[i][3][0], batch[i][3][1], batch[i][3][picked_indexes[i]]], dim=0)
                               )
             batch[i] = new_batch_item
         logging.debug(f"Duplicate batch: {duplicate_num}")
