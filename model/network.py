@@ -508,7 +508,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if pairs_local_indexes is None:
             raise NotImplementedError("pairs indexes should be pass if not return_feature")
         if self.args.pair_negative:
-            logging.debug(pairs_local_indexes)
             x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):3].long()
             y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):3].long()
             input_x = x[x_indexes]
