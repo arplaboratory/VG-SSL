@@ -508,6 +508,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if pairs_local_indexes is None:
             raise NotImplementedError("pairs indexes should be pass if not return_feature")
         if self.args.pair_negative:
+            logging.debug(pairs_local_indexes)
             x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):3].long()
             y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):3].long()
             input_x = x[x_indexes]
@@ -549,7 +550,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             dataset=self.train_ds,
             num_workers=self.args.num_workers,
             batch_size=self.args.train_batch_size,
-            collate_fn=datasets_ws.collate_fn,
+            collate_fn=datasets_ws.collate_fn_pair,
             pin_memory=False,
             drop_last=True,
             shuffle=True
