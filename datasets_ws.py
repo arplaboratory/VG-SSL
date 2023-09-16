@@ -64,6 +64,30 @@ def collate_fn(batch):
         triplets_local_indexes: torch tensor of shape (batch_size*10, 3).
         triplets_global_indexes: torch tensor of shape (batch_size, 12).
     """
+    images                  = torch.cat([e[0] for e in batch])
+    triplets_local_indexes  = torch.cat([e[1][None] for e in batch])
+    triplets_global_indexes = torch.cat([e[2][None] for e in batch])
+    utms = torch.cat([e[3] for e in batch], dim=0)
+    for i, (local_indexes, global_indexes) in enumerate(zip(triplets_local_indexes, triplets_global_indexes)):
+        local_indexes += len(global_indexes) * i  # Increment local indexes by offset (len(global_indexes) is 12)
+    return images, torch.cat(tuple(triplets_local_indexes)), triplets_global_indexes, utms
+
+def collate_fn_pair(batch):
+    """Creates mini-batch tensors from the list of tuples (images, 
+        triplets_local_indexes, triplets_global_indexes).
+        triplets_local_indexes are the indexes referring to each triplet within images.
+        triplets_global_indexes are the global indexes of each image.
+    Args:
+        batch: list of tuple (images, triplets_local_indexes, triplets_global_indexes).
+            considering each query to have 10 negatives (negs_num_per_query=10):
+            - images: torch tensor of shape (12, 3, h, w).
+            - triplets_local_indexes: torch tensor of shape (10, 3).
+            - triplets_global_indexes: torch tensor of shape (12).
+    Returns:
+        images: torch tensor of shape (batch_size*12, 3, h, w).
+        triplets_local_indexes: torch tensor of shape (batch_size*10, 3).
+        triplets_global_indexes: torch tensor of shape (batch_size, 12).
+    """
     if len(batch[0][0]) > 3:
         duplicate_num = 0
         picked_elements = torch.ones(len(batch)).long() * -1
@@ -82,7 +106,7 @@ def collate_fn(batch):
                 picked_indexes[i] = 2
             new_batch_item = (
                               torch.stack([batch[i][0][0], batch[i][0][1], batch[i][0][picked_indexes[i]]], dim=0),
-                              torch.stack([batch[i][1][0], batch[i][1][1], batch[i][1][picked_indexes[i]]], dim=0),
+                              torch.tensor([0, 1, 2]),
                               torch.stack([batch[i][2][0], batch[i][2][1], batch[i][2][picked_indexes[i]]], dim=0),
                               torch.stack([batch[i][3][0], batch[i][3][1], batch[i][3][picked_indexes[i]]], dim=0)
                               )
