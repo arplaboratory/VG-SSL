@@ -90,6 +90,7 @@ def collate_fn_pair(batch):
     """
     if len(batch[0][0]) > 3:
         duplicate_num = 0
+        conflict_num = 0
         picked_elements = torch.ones(len(batch)).long() * -1
         picked_indexes = torch.ones(len(batch)).long() * -1
         for i in range(len(batch)):
@@ -100,6 +101,8 @@ def collate_fn_pair(batch):
                     picked_elements[i] = batch[i][2][j]
                     picked_indexes[i] = j
                     break
+                else:
+                    conflict_num += 1
             if not find_unique:
                 duplicate_num += 1
                 picked_elements[i] = batch[i][2][2]
@@ -111,6 +114,7 @@ def collate_fn_pair(batch):
                               torch.stack([batch[i][3][0], batch[i][3][1], batch[i][3][picked_indexes[i]]], dim=0)
                               )
             batch[i] = new_batch_item
+        logging.debug(f"Conflict batch: {conflict_num}")
         logging.debug(f"Duplicate batch: {duplicate_num}")
         
         images                  = torch.cat([e[0] for e in batch])
@@ -859,20 +863,32 @@ class PairsDataset(TripletsDataset):
         else:
             cache = self.compute_cache(args, model, subset_ds, (len(self), args.features_dim))
 
-        # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
-        for query_index in tqdm(sampled_queries_indexes, ncols=100):
-            query_features = self.get_query_features(query_index, cache)
-            best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
-            self.pairs_global_indexes.append((query_index, best_positive_index))
-        # self.pairs_global_indexes is a tensor of shape [1000, 12]
-            
+        # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)      
         if args.neg_samples_num > 0:
-            database_indexes = np.array(list(range(self.database_num)))
-            soft_positives_indexes = np.unique(np.concatenate([self.soft_positives_per_query[i] for i in sampled_queries_indexes]))
-            neg_indexes = np.setdiff1d(database_indexes, soft_positives_indexes, assume_unique=True)
-            sampled_negative_database_indexes = np.random.choice(neg_indexes, args.neg_samples_num, replace=False)
-            for neg_index in sampled_negative_database_indexes:
-                self.pairs_global_indexes.append((neg_index, neg_index))
+            if args.pair_negative:
+                 for query_index in tqdm(sampled_queries_indexes, ncols=100):
+                    query_features = self.get_query_features(query_index, cache)
+                    best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
+
+                    # Choose some random database images, from those remove the soft_positives, and then take the first 10 images as neg_indexes
+                    soft_positives = self.soft_positives_per_query[query_index]
+                    neg_indexes = np.random.choice(self.database_num, size=self.negs_num_per_query + len(soft_positives),
+                                                replace=False)
+                    neg_indexes = np.setdiff1d(neg_indexes, soft_positives, assume_unique=True)[:self.negs_num_per_query]
+
+                    self.pairs_global_indexes.append((query_index, best_positive_index, *neg_indexes))
+            else:
+                for query_index in tqdm(sampled_queries_indexes, ncols=100):
+                    query_features = self.get_query_features(query_index, cache)
+                    best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
+                    self.pairs_global_indexes.append((query_index, best_positive_index))
+                database_indexes = np.array(list(range(self.database_num)))
+                soft_positives_indexes = np.unique(np.concatenate([self.soft_positives_per_query[i] for i in sampled_queries_indexes]))
+                neg_indexes = np.setdiff1d(database_indexes, soft_positives_indexes, assume_unique=True)
+                sampled_negative_database_indexes = np.random.choice(neg_indexes, args.neg_samples_num, replace=False)
+                for neg_index in sampled_negative_database_indexes:
+                    self.pairs_global_indexes.append((neg_index, neg_index))
+        # self.pairs_global_indexes is a tensor of shape [1000, 12]
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
 
     def search_positive_negative_pair(self, args, query_index, cache, sampled_database_indexes):
