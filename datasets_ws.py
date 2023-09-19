@@ -38,6 +38,7 @@ inv_base_transforms = transforms.Compose(
 )
 
 def path_to_pil_img(path):
+    # Singularity will accidently be unable to read the image. We can use black image to replace that. 
     count = 0
     while count < 1000:
         try:
@@ -46,7 +47,9 @@ def path_to_pil_img(path):
         except Exception:
             logging.debug(f"Retry: {path}")
             count += 1
-    raise KeyError("Have tried 1000 times. Give up")
+    logging.debug("Have tried 1000 times. Replace with a black image")
+    img = Image.new(mode="RGB", size=(640, 480)) # W, H
+    return img
 
 def collate_fn(batch):
     """Creates mini-batch tensors from the list of tuples (images, 
