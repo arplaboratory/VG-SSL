@@ -549,7 +549,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             dataset=self.train_ds,
             num_workers=self.args.num_workers,
             batch_size=self.args.train_batch_size,
-            collate_fn=datasets_ws.collate_fn_pair,
+            collate_fn=datasets_ws.collate_fn_pair if self.args.pair_negative else datasets_ws.collate_fn,
             pin_memory=False,
             drop_last=True,
             shuffle=True
