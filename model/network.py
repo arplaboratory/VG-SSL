@@ -325,16 +325,16 @@ def attach_projection_layers(args, backbone, aggregation, image_size, projection
         if args.ssl_method == "simsiam":
             # put batchnorm at the end
             if args.n_layers == 3:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
                                         nn.BatchNorm1d(projection_size),
                                         nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
+                                        nn.Linear(projection_size, projection_size, bias=False),
                                         nn.BatchNorm1d(projection_size),
                                         nn.ReLU(inplace=True),
                                         nn.Linear(projection_size, projection_size, bias=False),
                                         nn.BatchNorm1d(projection_size, affine=False))
             elif args.n_layers == 2:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
                                         nn.BatchNorm1d(projection_size),
                                         nn.ReLU(inplace=True),
                                         nn.Linear(projection_size, projection_size, bias=False),
@@ -345,15 +345,15 @@ def attach_projection_layers(args, backbone, aggregation, image_size, projection
         elif args.ssl_method == "byol":
             # No batchnorm at the end
             if args.n_layers == 3:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
                                         nn.BatchNorm1d(projection_size),
                                         nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size),
+                                        nn.Linear(projection_size, projection_size, bias=False),
                                         nn.BatchNorm1d(projection_size),
                                         nn.ReLU(inplace=True),
                                         nn.Linear(projection_size, projection_size))
             elif args.n_layers == 2:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size),
+                fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
                                         nn.BatchNorm1d(projection_size),
                                         nn.ReLU(inplace=True),
                                         nn.Linear(projection_size, projection_size))
