@@ -891,6 +891,16 @@ class PairsDataset(TripletsDataset):
                 sampled_negative_database_indexes = np.random.choice(neg_indexes, args.neg_samples_num, replace=False)
                 for neg_index in sampled_negative_database_indexes:
                     self.pairs_global_indexes.append((neg_index, neg_index))
+        else:
+            for query_index in tqdm(sampled_queries_indexes, ncols=100):
+                query_features = self.get_query_features(query_index, cache)
+                best_positive_index = self.get_best_positive_index(args, query_index, cache, query_features)
+
+                # Choose some random database images, from those remove the soft_positives, and then take the first 10 images as neg_indexes
+                soft_positives = self.soft_positives_per_query[query_index]
+                
+                self.pairs_global_indexes.append((query_index, best_positive_index))
+                
         # self.pairs_global_indexes is a tensor of shape [1000, 12]
         self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
 
