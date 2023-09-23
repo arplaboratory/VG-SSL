@@ -33,11 +33,6 @@ def parse_arguments():
     #########################################################################
     # SSL
     parser.add_argument(
-        "--remove_norm",
-        action="store_true",
-        help="Remove norm for vicreg and bt?"
-    )
-    parser.add_argument(
         "--n_layers",
         type=int,
         default=0,

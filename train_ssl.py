@@ -34,7 +34,7 @@ def main():
     commons.make_deterministic(args.seed)
     logging.info(f"Arguments: {args}")
     wandb_logger = WandbLogger(project="vg-ssl", entity="vg-ssl")
-    if args.pair_negative:
+    if args.pair_negative and args.neg_samples_num > 0:
         args.train_batch_size = args.train_batch_size // 2
         logging.info("Pair negative is enable. The actual batch size is train_batch_size//2")
     logging.info(f"The outputs are being saved in {args.save_dir}")
