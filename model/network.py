@@ -634,8 +634,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     def _shared_on_eval_epoch_end(self, eval_ds, args):
         queries_features = self.all_features[eval_ds.database_num:]
         database_features = self.all_features[: eval_ds.database_num]
-        queries_features = F.normalize(queries_features, dim=1)
-        database_features = F.normalize(database_features, dim=1)
 
         if args.eval_with_proj:
             faiss_index = faiss.IndexFlatL2(args.projection_size)
