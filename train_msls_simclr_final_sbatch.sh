@@ -1,31 +1,29 @@
 #!/bin/bash
 
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1.0 ./script/train_msls_ssl_long_simclr_neg.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1.0 ./script/train_msls_ssl_long_simclr_neg.sbatch
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=0.5 ./script/train_msls_ssl_long_simclr_neg.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=0.5 ./script/train_msls_ssl_long_simclr_neg.sbatch
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=0.25 ./script/train_msls_ssl_long_simclr_neg.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=0.25 ./script/train_msls_ssl_long_simclr_neg.sbatch
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=0.0 ./script/train_msls_ssl_long_simclr_neg.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=0.0 ./script/train_msls_ssl_long_simclr_neg.sbatch
+# # None vs random vs partial
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=0,FC=1024,NEGQ=0 ./script/train_msls_ssl_long_simclr_neg_random_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=0,FC=1024,NEGQ=0 ./script/train_msls_ssl_long_simclr_neg_random_pair.sbatch
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_random_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_random_pair.sbatch
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=1024,NEGQ=1 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=1024,NEGQ=1 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
 
-# sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-3,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-# sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-3,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-# sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-4,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-# sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-4,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-# sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-# sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
+# # Different number of layers
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=2048,LAY=0,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=2048,LAY=0,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=2048,LAY=2,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=2048,LAY=2,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
 
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=2 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=2 ./script/train_msls_ssl_long_simclr_neg1.sbatch
+# # Different number of proj dim
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=4096,LAY=1,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=4096,LAY=1,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=1024,LAY=1,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=1024,LAY=1,NEG=1000,FC=1024,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
 
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=1024,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=1024,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=4096,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=4096,LAY=1 ./script/train_msls_ssl_long_simclr_neg1.sbatch
-
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1_128.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1_128.sbatch
-
-sbatch --export=ALL,SSL=simclr,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1_256.sbatch
-sbatch --export=ALL,SSL=mocov2,SEED=0,LR=1e-5,BATCH=64,PROJ=2048,LAY=1 ./script/train_msls_ssl_long_simclr_neg1_256.sbatch
+# # Different number of fc dim
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=512,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=512,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=simclr,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=2048,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
+sbatch --export=ALL,SSL=mocov2,LR=1e-5,BATCH=64,PROJ=2048,LAY=1,NEG=1000,FC=2048,NEGQ=10 ./script/train_msls_ssl_long_simclr_neg_partial_pair.sbatch
