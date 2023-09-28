@@ -322,43 +322,21 @@ def attach_projection_layers(args, backbone, aggregation, image_size, projection
     aggregation.train()
     _, dim = representation_after_agg.shape
     if args.ssl_method == "simsiam" or args.ssl_method == "byol":
-        if args.ssl_method == "simsiam":
-            # put batchnorm at the end
-            if args.n_layers == 3:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size, affine=False))
-            elif args.n_layers == 2:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size, affine=False))
-            elif args.n_layers == 1:
-                fc_layer = nn.Sequential(nn.Linear(projection_size, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size, affine=False))
-        elif args.ssl_method == "byol":
-            # No batchnorm at the end
-            if args.n_layers == 3:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size))
-            elif args.n_layers == 2:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
-                                        nn.BatchNorm1d(projection_size),
-                                        nn.ReLU(inplace=True),
-                                        nn.Linear(projection_size, projection_size))
-            elif args.n_layers == 1:
-                fc_layer = nn.Sequential(nn.Linear(dim, projection_size))
+        if args.n_layers == 3:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size, bias=False),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size))
+        elif args.n_layers == 2:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size, bias=False),
+                                    nn.BatchNorm1d(projection_size),
+                                    nn.ReLU(inplace=True),
+                                    nn.Linear(projection_size, projection_size))
+        elif args.n_layers == 1:
+            fc_layer = nn.Sequential(nn.Linear(dim, projection_size))
         else:
             raise NotImplementedError()
     elif args.ssl_method == "mocov2" or args.ssl_method == "simclr":
