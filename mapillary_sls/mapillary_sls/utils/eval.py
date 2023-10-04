@@ -66,7 +66,6 @@ def mapk(ranks, pidxs, k):
     return np.mean([apk(a,p,k) for a,p in zip(pidxs, ranks)])
 
 if __name__ == "__main__":
-
 	# predicted rankings
 	predictions = np.asarray([["Q1", "DB0", "DB1", "DB2", "DB3", "DB4", "BD5"],
 			 			["Q2", "DB0", "DB5", "DB4", "DB1", "DB3", "DB2"]])
@@ -90,9 +89,9 @@ if __name__ == "__main__":
 		print()
 
 
-def create_dummy_predictions(prediction_path, dataset):
-    print("==> Prediction file {} doesn't exist".format(prediction_path))
-    print("==> We create a new dummy prediction file at :")
+def create_dummy_predictions(prediction_path, dataset, ranks=None):
+    # print("==> Prediction file {} doesn't exist".format(prediction_path))
+    print("==> We create a new prediction file at :")
     print("==> ", prediction_path)
 
     numQ = len(dataset.qIdx)
@@ -102,7 +101,8 @@ def create_dummy_predictions(prediction_path, dataset):
     query_keys = np.asarray([','.join([bn(k)[:-4] for k in key.split(',')]) for key in dataset.qImages[dataset.qIdx]]).reshape(numQ,1)
     database_keys = [','.join([bn(k)[:-4] for k in key.split(',')]) for key in dataset.dbImages]
     # choose n = min(5, numDb) random elements from the database
-    ranks = np.asarray([np.random.choice(database_keys, replace=False, size = (min(5, numDb))) for q in range(numQ)])
+    if ranks is None:
+        ranks = np.asarray([np.random.choice(database_keys, replace=False, size = (min(5, numDb))) for q in range(numQ)])
 
     if ',' in query_keys[0,0]:
         qtxt = f"sequence with keys {query_keys[0,0]}"
