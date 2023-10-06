@@ -1,9 +1,9 @@
 #!/bin/bash 
 #SBATCH --nodes=1                        # requests 3 compute servers
 #SBATCH --ntasks-per-node=1              # runs 2 tasks on each server
-#SBATCH --cpus-per-task=16               # uses 1 compute core per task
+#SBATCH --cpus-per-task=12               # uses 1 compute core per task
 #SBATCH --time=48:00:00
-#SBATCH --gres=gpu:a100:2
+#SBATCH --gres=gpu:a100:4
 #SBATCH --mem=100GB
 #SBATCH --job-name=train_msls_rerank
 #SBATCH --output=train_msls_rerank.out
