@@ -688,26 +688,7 @@ class PairsDataset(TripletsDataset):
         super().__init__(args, datasets_folder, dataset_name, split, negs_num_per_query=args.negs_num_per_query)
         self.epsilon = args.aug_epsilon
         self.queries_per_epoch = args.queries_per_epoch
-
-        if self.epsilon < 0.0 or self.epsilon > 1.0:
-            raise ValueError('epsilon value should in range of 0 to 1')
-
-        self.aug_transform = transforms.Compose(
-            [
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomApply(
-                    [
-                        transforms.ColorJitter(
-                            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
-                        )
-                    ],
-                    p=0.8,
-                ),
-                transforms.RandomGrayscale(p=0.2),
-                self.resized_transform
-            ]
-        )
-
+        
     def __getitem__(self, index):
         if self.is_inference:
             # At inference time return the single image. This is used for caching or computing NetVLAD's clusters
