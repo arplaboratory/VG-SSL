@@ -500,14 +500,17 @@ class SSLGeoLocalizationNet(pl.LightningModule):
         if pairs_local_indexes is None:
             raise NotImplementedError("pairs indexes should be pass if not return_feature")
         if self.args.pair_negative and self.args.neg_samples_num > 0:
-            x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):3].long()
-            y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):3].long()
+            x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):4].long()
+            y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):4].long()
             input_x = x[x_indexes]
             input_y = x[y_indexes]
             for i in range(2, 3):
-                neg_indexes = pairs_local_indexes[i:len(pairs_local_indexes):3].long()
-                input_x = torch.cat([input_x, x[neg_indexes]], dim=0)
-                input_y = torch.cat([input_y, x[neg_indexes]], dim=0)
+                neg_query_indexes = pairs_local_indexes[i:len(pairs_local_indexes):4].long()
+                neg_indexes = neg_query_indexes + 1
+                logging.debug(neg_query_indexes)
+                logging.debug(neg_indexes)
+                input_x = torch.cat([input_x, x[neg_query_indexes]], dim=0) # Negative_queries
+                input_y = torch.cat([input_y, x[neg_indexes]], dim=0) # Negatives
         else:
             x_indexes = pairs_local_indexes[0:len(pairs_local_indexes):2].long()
             y_indexes = pairs_local_indexes[1:len(pairs_local_indexes):2].long()

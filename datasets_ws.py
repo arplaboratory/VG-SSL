@@ -91,48 +91,48 @@ def collate_fn_pair(batch):
         triplets_local_indexes: torch tensor of shape (batch_size*10, 3).
         triplets_global_indexes: torch tensor of shape (batch_size, 12).
     """
-    if len(batch[0][0]) > 3:
-        duplicate_num = 0
-        conflict_num = 0
-        picked_elements = torch.ones(len(batch)).long() * -1
-        picked_indexes = torch.ones(len(batch)).long() * -1
-        for i in range(len(batch)):
-            find_unique = False
-            for j in range(2, len(batch[i][2])):
-                if not batch[i][2][j] in picked_elements:
-                    find_unique = True
-                    picked_elements[i] = batch[i][2][j]
-                    picked_indexes[i] = j
-                    break
-                else:
-                    conflict_num += 1
-            if not find_unique:
-                duplicate_num += 1
-                picked_elements[i] = batch[i][2][2]
-                picked_indexes[i] = 2
-            new_batch_item = (
-                              torch.stack([batch[i][0][0], batch[i][0][1], batch[i][0][picked_indexes[i]]], dim=0),
-                              torch.tensor([0, 1, 2]),
-                              torch.stack([batch[i][2][0], batch[i][2][1], batch[i][2][picked_indexes[i]]], dim=0),
-                              torch.stack([batch[i][3][0], batch[i][3][1], batch[i][3][picked_indexes[i]]], dim=0)
-                              )
-            batch[i] = new_batch_item
-        logging.debug(f"Conflict batch: {conflict_num}")
-        logging.debug(f"Duplicate batch: {duplicate_num}")
+    # if len(batch[0][0]) > 3:
+    #     duplicate_num = 0
+    #     conflict_num = 0
+    #     picked_elements = torch.ones(len(batch)).long() * -1
+    #     picked_indexes = torch.ones(len(batch)).long() * -1
+    #     for i in range(len(batch)):
+    #         find_unique = False
+    #         for j in range(2, len(batch[i][2])):
+    #             if not batch[i][2][j] in picked_elements:
+    #                 find_unique = True
+    #                 picked_elements[i] = batch[i][2][j]
+    #                 picked_indexes[i] = j
+    #                 break
+    #             else:
+    #                 conflict_num += 1
+    #         if not find_unique:
+    #             duplicate_num += 1
+    #             picked_elements[i] = batch[i][2][2]
+    #             picked_indexes[i] = 2
+    #         new_batch_item = (
+    #                           torch.stack([batch[i][0][0], batch[i][0][1], batch[i][0][picked_indexes[i]]], dim=0),
+    #                           torch.tensor([0, 1, 2]),
+    #                           torch.stack([batch[i][2][0], batch[i][2][1], batch[i][2][picked_indexes[i]]], dim=0),
+    #                           torch.stack([batch[i][3][0], batch[i][3][1], batch[i][3][picked_indexes[i]]], dim=0)
+    #                           )
+    #         batch[i] = new_batch_item
+    #     logging.debug(f"Conflict batch: {conflict_num}")
+    #     logging.debug(f"Duplicate batch: {duplicate_num}")
         
-        images                  = torch.cat([e[0] for e in batch])
-        triplets_local_indexes  = torch.cat([e[1][None] for e in batch])
-        triplets_global_indexes = torch.cat([e[2][None] for e in batch])
-        utms = torch.cat([e[3] for e in batch], dim=0)
-        for i, (local_indexes, global_indexes) in enumerate(zip(triplets_local_indexes, triplets_global_indexes)):
-            local_indexes += len(global_indexes) * i  # Increment local indexes by offset (len(global_indexes) is 12)
-    else:
-        images                  = torch.cat([e[0] for e in batch])
-        triplets_local_indexes  = torch.cat([e[1][None] for e in batch])
-        triplets_global_indexes = torch.cat([e[2][None] for e in batch])
-        utms = torch.cat([e[3] for e in batch], dim=0)
-        for i, (local_indexes, global_indexes) in enumerate(zip(triplets_local_indexes, triplets_global_indexes)):
-            local_indexes += len(global_indexes) * i  # Increment local indexes by offset (len(global_indexes) is 12)
+    #     images                  = torch.cat([e[0] for e in batch])
+    #     triplets_local_indexes  = torch.cat([e[1][None] for e in batch])
+    #     triplets_global_indexes = torch.cat([e[2][None] for e in batch])
+    #     utms = torch.cat([e[3] for e in batch], dim=0)
+    #     for i, (local_indexes, global_indexes) in enumerate(zip(triplets_local_indexes, triplets_global_indexes)):
+    #         local_indexes += len(global_indexes) * i  # Increment local indexes by offset (len(global_indexes) is 12)
+    # else:
+    images                  = torch.cat([e[0] for e in batch])
+    triplets_local_indexes  = torch.cat([e[1][None] for e in batch])
+    triplets_global_indexes = torch.cat([e[2][None] for e in batch])
+    utms = torch.cat([e[3] for e in batch], dim=0)
+    for i, (local_indexes, global_indexes) in enumerate(zip(triplets_local_indexes, triplets_global_indexes)):
+        local_indexes += (len(global_indexes) * 2 - 2) * i  # Increment local indexes by offset (len(global_indexes) is 12)
     return images, torch.cat(tuple(triplets_local_indexes)), triplets_global_indexes, utms
 
 class PCADataset(data.Dataset):
@@ -698,17 +698,20 @@ class PairsDataset(TripletsDataset):
             query_index, best_positive_index, neg_indexes = torch.split(self.pairs_global_indexes[index], (1,1,self.negs_num_per_query))
             query     = self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
             positive  = self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
+            negatives_query = [self.query_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
             negatives = [self.resized_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
-            images = torch.stack((query, positive, *negatives), 0)
+            images = torch.stack((query, positive, *negatives_query, *negatives), 0)
             if self.negs_num_per_query == 1:
                 utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
                                 torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0),
+                                torch.tensor(self.database_utms[neg_indexes]).unsqueeze(0),
                                 torch.tensor(self.database_utms[neg_indexes]).unsqueeze(0)), dim=0)
             else:
                 utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
                             torch.tensor(self.database_utms[best_positive_index]).unsqueeze(0),
+                            torch.tensor(self.database_utms[neg_indexes]),
                             torch.tensor(self.database_utms[neg_indexes])),dim=0)
-            pairs_local_indexes = torch.tensor([i for i in range(1+1+len(negatives))], dtype=torch.int)
+            pairs_local_indexes = torch.tensor([i for i in range(1+1+len(negatives)+len(negatives))], dtype=torch.int)
         else:
             query_index, best_positive_index = torch.split(self.pairs_global_indexes[index], (1,1))
             if index < self.queries_per_epoch:

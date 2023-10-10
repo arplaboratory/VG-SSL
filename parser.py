@@ -418,5 +418,8 @@ def parse_arguments():
     if args.pair_negative and divmod(args.train_batch_size, 2)[1] != 0:
         raise ValueError()
 
+    if args.pair_negative and args.negs_num_per_query != 1:
+        raise ValueError()
+    
     return args
     
