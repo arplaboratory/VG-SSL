@@ -507,8 +507,6 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             for i in range(2, 3):
                 neg_query_indexes = pairs_local_indexes[i:len(pairs_local_indexes):4].long()
                 neg_indexes = neg_query_indexes + 1
-                logging.debug(neg_query_indexes)
-                logging.debug(neg_indexes)
                 input_x = torch.cat([input_x, x[neg_query_indexes]], dim=0) # Negative_queries
                 input_y = torch.cat([input_y, x[neg_indexes]], dim=0) # Negatives
         else:
