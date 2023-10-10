@@ -575,8 +575,7 @@ class SSLGeoLocalizationNet(pl.LightningModule):
             images, pairs_local_indexes, _, _ = inputs
             # Flip all pairs or none
             if self.args.horizontal_flip:
-                for i in range(len(images)):
-                    images[i] = transforms.RandomHorizontalFlip()(images[i])
+                images = transforms.RandomHorizontalFlip()(images)
 
             # Compute features of all images (images contains queries, positives and negatives)
             if self.criterion_pairs is None:
