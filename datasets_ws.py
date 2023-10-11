@@ -699,7 +699,7 @@ class PairsDataset(TripletsDataset):
             query     = self.query_transform(path_to_pil_img(self.queries_paths[query_index]))
             positive  = self.resized_transform(path_to_pil_img(self.database_paths[best_positive_index]))
             negatives_query = [self.query_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
-            negatives = [self.resized_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
+            negatives = [self.query_transform(path_to_pil_img(self.database_paths[i])) for i in neg_indexes]
             images = torch.stack((query, positive, *negatives_query, *negatives), 0)
             if self.negs_num_per_query == 1:
                 utm = torch.cat((torch.tensor(self.queries_utms[query_index]).unsqueeze(0),
