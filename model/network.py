@@ -411,24 +411,33 @@ class SSLGeoLocalizationNet(pl.LightningModule):
     """
     def __init__(self, args, ds_list):
         super().__init__()
-        self.backbone = get_backbone(args)
-        self.args = args
-        self.aggregation = get_aggregation(args)
-        if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
-            if args.l2 == "before_pool":
-                self.aggregation = nn.Sequential(L2Norm(), self.aggregation, Flatten())
-            elif args.l2 == "after_pool":
-                self.aggregation = nn.Sequential(self.aggregation, L2Norm(), Flatten())
-            elif args.l2 == "none":
-                self.aggregation = nn.Sequential(self.aggregation, Flatten())
-        if args.fc_output_dim != None:
-            # Concatenate fully connected layer to the aggregation layer
-            self.aggregation = nn.Sequential(self.aggregation,
-                                             nn.Linear(args.features_dim, args.fc_output_dim),
-                                             L2Norm())
+        if args.backbone == 'deit':
             args.features_dim = args.fc_output_dim
-        if args.n_layers > 0:
-             self.aggregation = attach_projection_layers(args, self.backbone, self.aggregation, args.resize, args.projection_size)
+            self.backbone = deit_small_distilled_patch16_224(img_size=args.resize, num_classes=args.features_dim)
+        else:
+            self.backbone = get_backbone(args)
+        self.args = args
+        if args.backbone == 'deit':
+            self.aggregation = nn.Identity()
+            if args.n_layers > 0:
+                self.aggregation = attach_projection_layers(args, self.backbone, self.aggregation, args.resize, args.projection_size)
+        else:
+            self.aggregation = get_aggregation(args)
+            if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
+                if args.l2 == "before_pool":
+                    self.aggregation = nn.Sequential(L2Norm(), self.aggregation, Flatten())
+                elif args.l2 == "after_pool":
+                    self.aggregation = nn.Sequential(self.aggregation, L2Norm(), Flatten())
+                elif args.l2 == "none":
+                    self.aggregation = nn.Sequential(self.aggregation, Flatten())
+            if args.fc_output_dim != None:
+                # Concatenate fully connected layer to the aggregation layer
+                self.aggregation = nn.Sequential(self.aggregation,
+                                                nn.Linear(args.features_dim, args.fc_output_dim),
+                                                L2Norm())
+                args.features_dim = args.fc_output_dim
+            if args.n_layers > 0:
+                self.aggregation = attach_projection_layers(args, self.backbone, self.aggregation, args.resize, args.projection_size)                
         self.arch_name = args.backbone
         self.return_loss = False
         self.ssl_model = self.get_ssl_model()

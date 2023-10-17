@@ -126,9 +126,8 @@ class NetWrapper(nn.Module):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
-        self.n_layers = n_layers
 
-        if self.n_layers > 0:
+        if n_layers > 0:
             self.aggregation_before_proj = self.aggregation[0]
         else:
             self.aggregation_before_proj = self.aggregation

@@ -104,7 +104,7 @@ def main():
     logging.debug(model)
     if trainer.is_global_zero:
         wandb_logger.experiment.config.update(vars(args))
-    # trainer.validate(model)
+    trainer.validate(model)
     trainer.fit(model)
 
 if __name__ == "__main__":
