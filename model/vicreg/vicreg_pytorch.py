@@ -92,9 +92,10 @@ class VICREG(nn.Module):
         self.to(self.device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.eval()
-        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
-        self.train()
+        # no need for bt and vicreg
+        # self.eval()
+        # self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
+        # self.train()
 
     def forward(
         self,
