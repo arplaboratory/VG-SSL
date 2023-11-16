@@ -66,29 +66,19 @@ def resume_train(args, model, optimizer=None, strict=False):
             for key in list(checkpoint["model_state_dict"].keys()):
                 checkpoint["model_state_dict"][key.replace('module','module.backbone')] = checkpoint["model_state_dict"][key]
                 del(checkpoint["model_state_dict"][key])
-            # model.load_state_dict(checkpoint["model_state_dict"], strict=True)
-            # raise Exception
         model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
         if optimizer:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         best_r5 = checkpoint["best_r5"]
+        recalls = checkpoint["recalls"]
         not_improved_num = checkpoint["not_improved_num"]
         logging.debug(
             f"Loaded checkpoint: start_epoch_num = {start_epoch_num}, "
-            f"current_best_R@5 = {best_r5:.1f}"
+            f"current_best_R@5 = {best_r5:.1f}, "
+            f"recalls = {recalls}"
         )
-        # if args.resume.endswith("last_model.pth"):  # Copy best model to current save_dir
-        #     shutil.copy(
-        #         args.resume.replace("last_model.pth", "best_model.pth"), args.save_dir
-        #     )
     else: # train_ssl.py
         start_epoch_num = checkpoint["epoch"]
-        # if args.backbone.startswith('deit') and 'module.backbone.cls_token' not in checkpoint["state_dict"]:
-            # for key in list(checkpoint["state_dict"].keys()):
-            #     checkpoint["model_state_dict"][key.replace('module','module.backbone')] = checkpoint["state_dict"][key]
-            #     del(checkpoint["model_state_dict"][key])
-            # model.load_state_dict(checkpoint["model_state_dict"], strict=True)
-            # raise Exception
         for key in list(checkpoint["state_dict"].keys()):
             if key.startswith('ssl_model'):
                 del checkpoint["state_dict"][key]
@@ -100,9 +90,12 @@ def resume_train(args, model, optimizer=None, strict=False):
             if not key.startswith('module'):
                 del checkpoint["state_dict"][key]
         if not args.backbone.startswith('deit'):
-            checkpoint["state_dict"]["module.aggregation.0.1.p"] =checkpoint["state_dict"]["module.aggregation.0.0.1.p"]
-            checkpoint["state_dict"]["module.aggregation.1.weight"] =checkpoint["state_dict"]["module.aggregation.0.1.weight"]
-            checkpoint["state_dict"]["module.aggregation.1.bias"] =checkpoint["state_dict"]["module.aggregation.0.1.bias"]
+            try:
+                checkpoint["state_dict"]["module.aggregation.0.1.p"] =checkpoint["state_dict"]["module.aggregation.0.0.1.p"]
+                checkpoint["state_dict"]["module.aggregation.1.weight"] =checkpoint["state_dict"]["module.aggregation.0.1.weight"]
+                checkpoint["state_dict"]["module.aggregation.1.bias"] =checkpoint["state_dict"]["module.aggregation.0.1.bias"]
+            except Exception:
+                logging.debug("No projection layer found!")
                 
         model.load_state_dict(checkpoint["state_dict"], strict=strict)
         if optimizer:
@@ -113,11 +106,68 @@ def resume_train(args, model, optimizer=None, strict=False):
             f"Loaded checkpoint: start_epoch_num = {start_epoch_num}, "
             f"current_best_R@5 = {best_r5:.1f}"
         )
-        # if args.resume.endswith("last_model.pth"):  # Copy best model to current save_dir
-        #     shutil.copy(
-        #         args.resume.replace("last_model.pth", "best_model.pth"), args.save_dir
-        #     )
     return model, optimizer, best_r5, start_epoch_num, not_improved_num
+
+def resume_train_ssl(args, model, optimizer=None, strict=False):
+    """Load model, optimizer, and other training parameters"""
+    logging.debug(f"Loading checkpoint: {args.resume}")
+    checkpoint = torch.load(args.resume)
+    start_epoch_num = checkpoint["epoch"]
+    model.load_state_dict(checkpoint["state_dict"], strict=True)
+    if optimizer:
+        optimizer.load_state_dict(checkpoint["optimizer_states"])
+    best_r5 = checkpoint['callbacks']["ModelCheckpoint{'monitor': 'val_recall5', 'mode': 'max', 'every_n_train_steps': 0, 'every_n_epochs': 1, 'train_time_interval': None}"]['best_model_score'].item()
+    not_improved_num = 0
+    logging.debug(
+        f"Loaded checkpoint: start_epoch_num = {start_epoch_num}, "
+        f"current_best_R@5 = {best_r5:.1f}"
+    )
+    return model, optimizer, best_r5, start_epoch_num, not_improved_num
+
+def resume_train_pitts30k(args, model, optimizer=None, strict=False):
+    """Load model, optimizer, and other training parameters"""
+    logging.debug(f"Loading checkpoint: {args.resume}")
+    checkpoint = torch.load(args.resume)
+    start_epoch_num = checkpoint["epoch"]
+    for key in list(checkpoint["state_dict"].keys()):
+        if key.startswith('ssl_model'):
+            del checkpoint["state_dict"][key]
+    if not args.backbone.startswith('deit'):
+        for key in list(checkpoint["state_dict"].keys()):
+            checkpoint["state_dict"][key.replace('backbone','module.backbone')] = checkpoint["state_dict"][key]
+        for key in list(checkpoint["state_dict"].keys()):
+            checkpoint["state_dict"][key.replace('aggregation','module.aggregation')] = checkpoint["state_dict"][key]
+        for key in list(checkpoint["state_dict"].keys()):
+            if not key.startswith('module'):
+                del checkpoint["state_dict"][key]
+        try:
+            checkpoint["state_dict"]["module.aggregation.0.1.p"] =checkpoint["state_dict"]["module.aggregation.0.0.1.p"]
+            checkpoint["state_dict"]["module.aggregation.1.weight"] =checkpoint["state_dict"]["module.aggregation.0.1.weight"]
+            checkpoint["state_dict"]["module.aggregation.1.bias"] =checkpoint["state_dict"]["module.aggregation.0.1.bias"]
+        except Exception:
+            logging.debug("No projection layer found!")
+    else:
+        for key in list(checkpoint["state_dict"].keys()):
+            checkpoint["state_dict"][key.replace('backbone.','')] = checkpoint["state_dict"][key]
+        for key in list(checkpoint["state_dict"].keys()):
+            if key.startswith('backbone'):
+                del checkpoint["state_dict"][key]
+        for key in list(checkpoint["state_dict"].keys()):
+            if key.startswith('aggregation'):
+                del checkpoint["state_dict"][key]
+        for key in list(checkpoint["state_dict"].keys()):
+            checkpoint["state_dict"]['module.' + key] = checkpoint["state_dict"][key]
+        for key in list(checkpoint["state_dict"].keys()):
+            if not key.startswith('module'):
+                del checkpoint["state_dict"][key]
+    model.load_state_dict(checkpoint["state_dict"], strict=strict)
+    best_r5 = checkpoint['callbacks']["ModelCheckpoint{'monitor': 'val_recall5', 'mode': 'max', 'every_n_train_steps': 0, 'every_n_epochs': 1, 'train_time_interval': None}"]['best_model_score'].item()
+    not_improved_num = 0
+    logging.debug(
+        f"Loaded checkpoint: start_epoch_num = {start_epoch_num}, "
+        f"current_best_R@5 = {best_r5:.1f}"
+    )
+    return model, optimizer, 0, 0, 0
 
 def compute_pca(args, model, full_features_dim):
     model = model.eval()
