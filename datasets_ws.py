@@ -298,7 +298,7 @@ class TripletsDataset(BaseDataset):
         if self.mining == "full":  # "Full database mining" keeps a cache with last used negatives
             self.neg_cache = [np.empty((0,), dtype=np.int32) for _ in range(self.queries_num)]
         elif 'global' in self.mining:
-            self.neg_cache = np.load("result/" + args.dataset_name + '_v2_' + args.backbone + '_hard_final.npy')  # _hard_final_strict
+            self.neg_cache = np.load(f"result_{args.ssl_method}/" + args.dataset_name + '_v2_' + args.backbone + '_hard_final.npy')  # _hard_final_strict
             self.neg_hardness = args.neg_hardness
         self.is_inference = False
 
@@ -744,6 +744,8 @@ class PairsDataset(TripletsDataset):
             self.compute_pairs_random(args, model)
         elif self.mining == "partial":
             self.compute_pairs_partial(args, model)
+        elif self.mining == "full":
+            self.compute_pairs_full(args, model)
         else:
             raise NotImplementedError()
 
@@ -839,7 +841,10 @@ class PairsDataset(TripletsDataset):
     def compute_pairs_random(self, args, model):
         self.pairs_global_indexes = []
         # Take 1000 random queries
-        sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False)
+        try:
+            sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False)
+        except Exception:
+            sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=True)
         # Take all the positives
         positives_indexes = [self.hard_positives_per_query[i] for i in sampled_queries_indexes]
         positives_indexes = [p for pos in positives_indexes for p in pos]  # Flatten list of lists to a list
@@ -910,7 +915,10 @@ class PairsDataset(TripletsDataset):
         negative_indexes = []
         # Take 1000 random queries
         if self.mining == "partial":
-            sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False)
+            try:
+                sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False)
+            except Exception:
+                sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=True)
         elif self.mining == "msls_weighted":  # Pick night and sideways queries with higher probability
             sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False, p=self.weights)
         
@@ -934,6 +942,43 @@ class PairsDataset(TripletsDataset):
         results = []
         for query_index in tqdm(sampled_queries_indexes, ncols=100):
             results.append(pool.apply_async(self.search_positive_negative_pair, (args, query_index, cache, sampled_database_indexes)))
+        pool.close()
+        for i in tqdm(range(len(results)), ncols=100):
+            local_result, local_negative_indexes = results[i].get()
+            if args.pair_negative:
+                self.pairs_global_indexes.append(local_result)
+            else:
+                self.pairs_global_indexes.append(local_result)
+                negative_indexes = negative_indexes + local_negative_indexes
+        pool.join()
+        # self.pairs_global_indexes is a tensor of shape [1000, 12]
+        if not args.pair_negative:
+            negative_indexes = list(np.unique(negative_indexes))
+            negative_pairs_indexes = [(idx, idx) for idx in negative_indexes]
+            self.pairs_global_indexes = self.pairs_global_indexes + negative_pairs_indexes
+        self.pairs_global_indexes = torch.tensor(self.pairs_global_indexes)
+        
+    def compute_pairs_full(self, args, model):
+        self.pairs_global_indexes = []
+        negative_indexes = []
+        try:
+            sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=False)
+        except Exception:
+            sampled_queries_indexes = np.random.choice(self.queries_num, args.queries_per_epoch, replace=True)
+        # Take all database indexes
+        database_indexes = list(range(self.database_num))
+        #  Compute features for all images and store them in cache
+        subset_ds = Subset(self, database_indexes + list(sampled_queries_indexes + self.database_num))
+        if args.n_layers > 0:
+            cache = self.compute_cache(args, model, subset_ds, (len(self), args.projection_size))
+        else:
+            cache = self.compute_cache(args, model, subset_ds, (len(self), args.features_dim))
+        
+        # This loop's iterations could be done individually in the __getitem__(). This way is slower but clearer (and yields same results)
+        pool = ThreadPool(args.num_workers)
+        results = []
+        for query_index in tqdm(sampled_queries_indexes, ncols=100):
+            results.append(pool.apply_async(self.search_positive_negative_pair, (args, query_index, cache, database_indexes)))
         pool.close()
         for i in tqdm(range(len(results)), ncols=100):
             local_result, local_negative_indexes = results[i].get()
