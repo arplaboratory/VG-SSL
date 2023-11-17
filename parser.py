@@ -411,9 +411,6 @@ def parse_arguments():
 
     if args.pca_dim != None and args.pca_dataset_folder == None:
         raise ValueError("Please specify --pca_dataset_folder when using pca")
-
-    if args.pair_negative and args.mining == 'full':
-        raise ValueError()
     
     if args.pair_negative and divmod(args.train_batch_size, 2)[1] != 0:
         raise ValueError()

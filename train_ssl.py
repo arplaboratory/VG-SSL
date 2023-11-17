@@ -90,6 +90,28 @@ def main():
     bar = RichProgressBar()
     lrmoniter = LearningRateMonitor(logging_interval = "step")
 
+    # Resume model, optimizer, and other training parameters
+    if args.resume:
+        if args.aggregation != "crn":
+            (
+                model,
+                _,
+                best_r5,
+                start_epoch_num,
+                not_improved_num,
+            ) = util.resume_train_ssl(args, model)
+        else:
+            # CRN uses pretrained NetVLAD, then requires loading with strict=False and
+            # does not load the optimizer from the checkpoint file.
+            model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train_ssl(
+                args, model, strict=False
+            )
+        logging.info(
+            f"Resuming from epoch {start_epoch_num} with best recall@5 {best_r5:.1f}"
+        )
+    else:
+        best_r5 = start_epoch_num = not_improved_num = 0
+        
     trainer = pl.Trainer(
         accelerator = "gpu",
         num_nodes = args.num_nodes,
@@ -101,7 +123,7 @@ def main():
         check_val_every_n_epoch = 10,
         num_sanity_val_steps = 0
     )
-    logging.debug(model)
+    # logging.debug(model)
     if trainer.is_global_zero:
         wandb_logger.experiment.config.update(vars(args))
     # trainer.validate(model)

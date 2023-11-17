@@ -153,11 +153,11 @@ if args.resume:
             best_r5,
             start_epoch_num,
             not_improved_num,
-        ) = util.resume_train(args, model, optimizer)
+        ) = util.resume_train_pitts30k(args, model, optimizer, strict=True)
     else:
         # CRN uses pretrained NetVLAD, then requires loading with strict=False and
         # does not load the optimizer from the checkpoint file.
-        model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train(
+        model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train_pitts30k(
             args, model, strict=False
         )
     logging.info(
@@ -178,6 +178,9 @@ if torch.cuda.device_count() >= 2:
     # When using more than 1GPU, use sync_batchnorm for torch.nn.DataParallel
     model = convert_model(model)
     model = model.cuda()
+
+recalls, recalls_str = test.test(args, val_ds, model)
+logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
 
 # Training loop
 for epoch_num in range(start_epoch_num, args.epochs_num):

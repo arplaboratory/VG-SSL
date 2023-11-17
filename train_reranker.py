@@ -276,8 +276,10 @@ def run_train():
                      f"average epoch triplet loss = {epoch_losses.mean():.4f}")
 
         # Compute recalls on validation set
+        torch.cuda.empty_cache()
         recalls, recalls_str = test.test_rerank(args, val_ds, model, rerank_bs=args.rerank_batch_size,num_local=args.num_local, rerank_dim=(args.local_dim+3), reg_top=args.reg_top)
         logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
+        torch.cuda.empty_cache()
 
         save_best = args.save_best
         save_best_r = args.recall_values[save_best]

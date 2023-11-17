@@ -74,13 +74,13 @@ def scan_training(args):
             images = images.to(args.device)
             features = model(images)
             cache[indexes.numpy()] = features.cpu().numpy()
-    np.save('result/'+args.dataset_name+'_v2_'+args.backbone+'_reference_feature.npy', cache[:triplets_ds.database_num])
-    np.save('result/'+args.dataset_name+'_v2_'+args.backbone+'_query_feature.npy', cache[triplets_ds.database_num:])
+    np.save(f"result_{args.ssl_method}/"+args.dataset_name+'_v2_'+args.backbone+'_reference_feature.npy', cache[:triplets_ds.database_num])
+    np.save(f"result_{args.ssl_method}/"+args.dataset_name+'_v2_'+args.backbone+'_query_feature.npy', cache[triplets_ds.database_num:])
 
 
 def compute_mining(args):
-    query_feature = cp.load('result/'+args.dataset_name+'_v2_'+args.backbone+'_query_feature.npy')
-    reference_features = cp.load('result/'+args.dataset_name+'_v2_'+args.backbone+'_reference_feature.npy')
+    query_feature = cp.load(f"result_{args.ssl_method}/"+args.dataset_name+'_v2_'+args.backbone+'_query_feature.npy')
+    reference_features = cp.load(f"result_{args.ssl_method}/"+args.dataset_name+'_v2_'+args.backbone+'_reference_feature.npy')
     # features = cp.load('result/train_features_GLD.npy')
     N_q, C = query_feature.shape
     N_r, C = reference_features.shape
@@ -100,11 +100,11 @@ def compute_mining(args):
         # print(hard_init[:20])
         # raise Exception
         print(i, 'time:', time.time()-t_s, 'estimated:', (N_q-i)/interval*(time.time()-t_s)/3600)
-    np.save('result/' + args.dataset_name + '_v2_' + args.backbone + '_hard_init.npy', hard_init)
+    np.save(f"result_{args.ssl_method}/" + args.dataset_name + '_v2_' + args.backbone + '_hard_init.npy', hard_init)
     # # ====================================================
     interval = 120
     keep = 200
-    hard_init = cp.load('result/' + args.dataset_name + '_v2_' + args.backbone + '_hard_init.npy')
+    hard_init = cp.load(f"result_{args.ssl_method}/" + args.dataset_name + '_v2_' + args.backbone + '_hard_init.npy')
     hard_final = np.zeros([N_q, keep], dtype=int) - 1
     # ==================================================
     count = 0
@@ -123,7 +123,7 @@ def compute_mining(args):
         if i % 100 == 0:
             print(i, 'time:', time.time() - t_s, 'estimated:', (N_q - i) * (time.time() - t_s) / 3600)
         # raise Exception
-    np.save('result/' + args.dataset_name + '_v2_' + args.backbone + '_hard_final.npy', hard_final)
+    np.save(f"result_{args.ssl_method}/" + args.dataset_name + '_v2_' + args.backbone + '_hard_final.npy', hard_final)
 
 class Args():
     def __init__(self):
@@ -198,13 +198,20 @@ if __name__ == '__main__':
         default=None,
         help="Path to load checkpoint from, for resuming training or testing.",
     )
+    parser.add_argument(
+        "--ssl_method",
+        type=str,
+        choices=["none", "byol", "simclr", "simsiam", "vicreg", "bt", "mocov2"],
+        help="Choose to use triplet or pair"
+    )
     parsed_args = parser.parse_args()
     args = Args()
     args.backbone = parsed_args.backbone
     args.resume = parsed_args.resume + "/best_model.pth"
+    args.ssl_method = parsed_args.ssl_method
     if args.backbone.startswith("resnet"):
         args.fc_output_dim = 1024
-    if not os.path.isdir("result"):
-        os.mkdir("result")
+    if not os.path.isdir(f"result_{args.ssl_method}"):
+        os.mkdir(f"result_{args.ssl_method}")
     scan_training(args)
     compute_mining(args)
