@@ -46,16 +46,6 @@ def resume_model(args, model):
     model.load_state_dict(state_dict)
     return model
 
-def resume_model_ssl(args, model):
-    model = resume_model_ssl_single(args, model)
-    return model
-
-def resume_model_ssl_single(args, model):
-    checkpoint = torch.load(args.resume, map_location=args.device)
-    state_dict = checkpoint["state_dict"]
-    model.load_state_dict(state_dict, strict=False)
-    return model
-
 def resume_train(args, model, optimizer=None, strict=False):
     """Load model, optimizer, and other training parameters"""
     logging.debug(f"Loading checkpoint: {args.resume}")
@@ -113,7 +103,7 @@ def resume_train_ssl(args, model, optimizer=None, strict=False):
     logging.debug(f"Loading checkpoint: {args.resume}")
     checkpoint = torch.load(args.resume)
     start_epoch_num = checkpoint["epoch"]
-    model.load_state_dict(checkpoint["state_dict"], strict=True)
+    model.load_state_dict(checkpoint["state_dict"], strict=strict)
     if optimizer:
         optimizer.load_state_dict(checkpoint["optimizer_states"])
     best_r5 = checkpoint['callbacks']["ModelCheckpoint{'monitor': 'val_recall5', 'mode': 'max', 'every_n_train_steps': 0, 'every_n_epochs': 1, 'train_time_interval': None}"]['best_model_score'].item()
