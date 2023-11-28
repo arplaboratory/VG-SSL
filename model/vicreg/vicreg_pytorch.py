@@ -53,8 +53,7 @@ class VICREG(nn.Module):
         self,
         net,
         image_size,
-        num_nodes,
-        num_devices,
+        gpus_num,
         projection_size = 8192,
         projection_hidden_size = 8192,
         use_bt_loss = False,
@@ -64,14 +63,11 @@ class VICREG(nn.Module):
         lambd = 0.0051,
         n_layers = 3,
         aggregation = None,
-        disable_projector = False,
     ):
         super().__init__()
         self.net = net
         self.aggregation = aggregation
-        self.num_nodes = num_nodes
-        self.num_devices = num_devices
-        self.disable_projector = disable_projector
+        self.gpus_num = gpus_num
         # Augmentation is finished outside
 
         self.use_bt_loss = use_bt_loss
@@ -85,7 +81,10 @@ class VICREG(nn.Module):
         self.mlp += str(projection_size)
         self.num_features = int(self.mlp.split("-")[-1])
         
-        self.projector = None
+        if n_layers > 0:
+            self.aggregation_before_proj = self.aggregation[0]
+        else:
+            self.aggregation_before_proj = self.aggregation
         self.bn = None
 
         # get device of network and make wrapper same device
@@ -93,14 +92,10 @@ class VICREG(nn.Module):
         self.to(self.device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.eval()
-        self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
-        self.train()
-
-    def _get_projector(self, hidden):
-        _, dim = hidden.shape
-        projector = create_projector(dim, self.mlp)
-        return projector.to(hidden)
+        # no need for bt and vicreg
+        # self.eval()
+        # self.forward(torch.randn(2, 3, image_size[0], image_size[1], device=self.device), torch.randn(2, 3, image_size[0], image_size[1], device=self.device))
+        # self.train()
 
     def forward(
         self,
@@ -110,8 +105,8 @@ class VICREG(nn.Module):
         return_projection = True
     ):
         if return_embedding:
-            if return_projection:
-                return self.projector(self.aggregation(self.net(x)))
+            if not return_projection:
+                return self.aggregation_before_proj(self.net(x))
             else:
                 return self.aggregation(self.net(x))
 
@@ -121,22 +116,11 @@ class VICREG(nn.Module):
         x = self.aggregation(x)
         y = self.aggregation(y)
 
-        if self.projector is None:
-            if not self.disable_projector:
-                self.projector = self._get_projector(x)
-            else:
-                self.projector = nn.Identity()
-            return
-
-        if not self.disable_projector:
-            x = self.projector(x)
-            y = self.projector(y)
-
         if not self.use_bt_loss:
             # Use vicreg loss
             repr_loss = F.mse_loss(x, y)
 
-            if not (self.num_devices==1 and self.num_nodes==1):
+            if self.gpus_num > 1:
                 x = torch.cat(FullGatherLayer.apply(x), dim=0)
                 y = torch.cat(FullGatherLayer.apply(y), dim=0)
             x = x - x.mean(dim=0)
@@ -161,7 +145,7 @@ class VICREG(nn.Module):
         else:
             # Use Barlow twins loss
             # empirical cross-correlation matrix
-            if not (self.num_devices==1 and self.num_nodes==1):
+            if self.gpus_num > 1:
                 x = torch.cat(FullGatherLayer.apply(x), dim=0)
                 y = torch.cat(FullGatherLayer.apply(y), dim=0)
             x = x - x.mean(dim=0)

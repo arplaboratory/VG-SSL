@@ -34,6 +34,9 @@ def main():
     commons.make_deterministic(args.seed)
     logging.info(f"Arguments: {args}")
     wandb_logger = WandbLogger(project="vg-ssl", entity="vg-ssl")
+    if args.pair_negative and args.neg_samples_num > 0:
+        args.train_batch_size = args.train_batch_size // 2
+        logging.info("Pair negative is enable. The actual batch size is train_batch_size//2")
     logging.info(f"The outputs are being saved in {args.save_dir}")
     logging.info(
         f"Using {torch.cuda.device_count()} GPUs and {multiprocessing.cpu_count()} CPUs"
@@ -73,7 +76,7 @@ def main():
             args.num_devices = torch.cuda.device_count()
 
     # Initialize model
-    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds], args.train_batch_size)
+    model = network.SSLGeoLocalizationNet(args, [train_ds, val_ds, test_ds])
 
     checkpoint_callback = ModelCheckpoint(
         monitor="val_recall5",
@@ -87,6 +90,28 @@ def main():
     bar = RichProgressBar()
     lrmoniter = LearningRateMonitor(logging_interval = "step")
 
+    # Resume model, optimizer, and other training parameters
+    if args.resume:
+        if args.aggregation != "crn":
+            (
+                model,
+                _,
+                best_r5,
+                start_epoch_num,
+                not_improved_num,
+            ) = util.resume_train_ssl(args, model)
+        else:
+            # CRN uses pretrained NetVLAD, then requires loading with strict=False and
+            # does not load the optimizer from the checkpoint file.
+            model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train_ssl(
+                args, model, strict=False
+            )
+        logging.info(
+            f"Resuming from epoch {start_epoch_num} with best recall@5 {best_r5:.1f}"
+        )
+    else:
+        best_r5 = start_epoch_num = not_improved_num = 0
+        
     trainer = pl.Trainer(
         accelerator = "gpu",
         num_nodes = args.num_nodes,
@@ -98,10 +123,10 @@ def main():
         check_val_every_n_epoch = 10,
         num_sanity_val_steps = 0
     )
-    logging.debug(model)
+    # logging.debug(model)
     if trainer.is_global_zero:
         wandb_logger.experiment.config.update(vars(args))
-    trainer.validate(model)
+    # trainer.validate(model)
     trainer.fit(model)
 
 if __name__ == "__main__":

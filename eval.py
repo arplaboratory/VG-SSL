@@ -68,6 +68,8 @@ model = model.to(args.device)
 if args.aggregation in ["netvlad", "crn"]:
     args.features_dim *= args.netvlad_clusters
 
+model = torch.nn.DataParallel(model)
+
 if args.off_the_shelf.startswith("radenovic") or args.off_the_shelf.startswith("naver"):
     if args.off_the_shelf.startswith("radenovic"):
         pretrain_dataset_name = args.off_the_shelf.split("_")[
@@ -100,10 +102,9 @@ if args.off_the_shelf.startswith("radenovic") or args.off_the_shelf.startswith("
     model.load_state_dict(renamed_state_dict)
 elif args.resume is not None:
     logging.info(f"Resuming model from {args.resume}")
-    model = util.resume_model(args, model)
+    model, _, _, _, _ = util.resume_train(args, model)
 # Enable DataParallel after loading checkpoint, otherwise doing it before
 # would append "module." in front of the keys of the state dict triggering errors
-model = torch.nn.DataParallel(model)
 
 if args.pca_dim is None:
     pca = None
@@ -113,10 +114,10 @@ else:
     pca = util.compute_pca(
         args, model, full_features_dim)
 
-######################################### DATASETS #########################################
+######################################### DATASETS ######################################### 
 test_ds = datasets_ws.BaseDataset(
     args, args.datasets_folder, args.dataset_name, "test")
-logging.info(f"Test set: {test_ds}")
+logging.info(f"Val set: {test_ds}")
 
 ######################################### TEST on TEST SET #########################################
 recalls, recalls_str = test.test(args, test_ds, model, args.test_method, pca)

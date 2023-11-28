@@ -1,0 +1,39 @@
+# Pitts30k finetune resnet50
+sbatch script/train_pitts30k_full_50_finetune_bt.sbatch
+sbatch script/train_pitts30k_full_50_finetune_byol.sbatch
+sbatch script/train_pitts30k_full_50_finetune_mocov2.sbatch
+sbatch script/train_pitts30k_full_50_finetune_simclr.sbatch
+sbatch script/train_pitts30k_full_50_finetune_simsiam.sbatch
+sbatch script/train_pitts30k_full_50_finetune_vicreg.sbatch
+
+# Pitts30k finetune deit
+sbatch script/train_pitts30k_full_deit_finetune_bt.sbatch
+sbatch script/train_pitts30k_full_deit_finetune_byol.sbatch
+sbatch script/train_pitts30k_full_deit_finetune_mocov2.sbatch
+sbatch script/train_pitts30k_full_deit_finetune_simclr.sbatch
+sbatch script/train_pitts30k_full_deit_finetune_simsiam.sbatch
+sbatch script/train_pitts30k_full_deit_finetune_vicreg.sbatch
+
+# msls rerank deit
+sbatch script/train_msls_rerank_deit_simclr.sbatch
+sbatch script/train_msls_rerank_deit_mocov2.sbatch
+sbatch script/train_msls_rerank_deit_simsiam.sbatch
+sbatch script/train_msls_rerank_deit_vicreg.sbatch
+sbatch script/train_msls_rerank_deit_byol.sbatch
+sbatch script/train_msls_rerank_deit_bt.sbatch
+
+# msls finetune deit
+sbatch script/train_msls_finetune_deit_simclr.sbatch
+sbatch script/train_msls_finetune_deit_mocov2.sbatch
+sbatch script/train_msls_finetune_deit_simsiam.sbatch
+sbatch script/train_msls_finetune_deit_vicreg.sbatch
+sbatch script/train_msls_finetune_deit_byol.sbatch
+sbatch script/train_msls_finetune_deit_bt.sbatch
+
+# pitts30k finetune deit
+sbatch script/train_msls_finetune_pitts30k_deit_simclr.sbatch
+sbatch script/train_msls_finetune_pitts30k_deit_mocov2.sbatch
+sbatch script/train_msls_finetune_pitts30k_deit_byol.sbatch
+sbatch script/train_msls_finetune_pitts30k_deit_simsiam.sbatch
+sbatch script/train_msls_finetune_pitts30k_deit_bt.sbatch
+sbatch script/train_msls_finetune_pitts30k_deit_vicreg.sbatch

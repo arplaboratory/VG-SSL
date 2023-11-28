@@ -19,6 +19,8 @@ import torchvision.transforms as transforms
 from torch.utils.data.dataloader import DataLoader
 import wandb
 from uuid import uuid4
+from model.Deit import deit_small_distilled_patch16_224, deit_base_distilled_patch16_384
+from model.vicreg.utils import adjust_learning_rate
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
 
@@ -65,7 +67,14 @@ test_ds = datasets_ws.BaseDataset(
 logging.info(f"Test set: {test_ds}")
 
 # Initialize model
-model = network.GeoLocalizationNet(args)
+if args.backbone == "deitBase":
+    args.features_dim = args.fc_output_dim
+    model = deit_base_distilled_patch16_384(img_size=args.resize, num_classes=args.features_dim)
+elif args.backbone == "deit":
+    args.features_dim = args.fc_output_dim
+    model = deit_small_distilled_patch16_224(img_size=args.resize, num_classes=args.features_dim)
+else:
+    model = network.GeoLocalizationNet(args)
 model = model.to(args.device)
 if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
     if not args.resume:
@@ -114,10 +123,11 @@ if args.aggregation == "crn":
 else:
     if args.optim == "adam":
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    elif args.optim == 'adamw':
+        optimizer = torch.optim.AdamW(model.parameters(), args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0.03,
+                                        amsgrad=False)
     elif args.optim == "sgd":
-        optimizer = torch.optim.SGD(
-            model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001
-        )
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001)
     else:
         raise NotImplementedError()
 
@@ -143,11 +153,11 @@ if args.resume:
             best_r5,
             start_epoch_num,
             not_improved_num,
-        ) = util.resume_train(args, model, optimizer)
+        ) = util.resume_train_pitts30k(args, model, optimizer, strict=True)
     else:
         # CRN uses pretrained NetVLAD, then requires loading with strict=False and
         # does not load the optimizer from the checkpoint file.
-        model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train(
+        model, _, best_r5, start_epoch_num, not_improved_num = util.resume_train_pitts30k(
             args, model, strict=False
         )
     logging.info(
@@ -169,13 +179,14 @@ if torch.cuda.device_count() >= 2:
     model = convert_model(model)
     model = model.cuda()
 
-# First val loop for sanity check
-# Compute recalls on validation set
-# recalls, recalls_str = test.test(args, val_ds, model)
-# logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
+recalls, recalls_str = test.test(args, val_ds, model)
+logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
 
 # Training loop
 for epoch_num in range(start_epoch_num, args.epochs_num):
+    if args.optim == 'adamw':
+        adjust_learning_rate(optimizer, epoch_num, args)
+
     logging.info(f"Start training epoch: {epoch_num:02d}")
 
     epoch_start_time = datetime.now()
@@ -202,15 +213,12 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
         else:
             raise NotImplementedError()
 
-        if args.use_faiss_gpu:
-            torch.cuda.empty_cache()
-
         model.train()
 
         # images shape: (train_batch_size*12)*3*H*W ; by default train_batch_size=4, H=480, W=640
         # triplets_local_indexes shape: (train_batch_size*10)*3 ; because 10 triplets per query
         if args.method == "triplet":
-            for images, triplets_local_indexes, _ in tqdm(triplets_dl, ncols=100):
+            for images, triplets_local_indexes, _, _ in tqdm(triplets_dl, ncols=100):
 
                 # Flip all triplets or none
                 if args.horizontal_flip:
