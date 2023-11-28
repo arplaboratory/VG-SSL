@@ -26,7 +26,7 @@ def parse_arguments():
     parser.add_argument('--save_best', type=int, default=1,
                     help='save the best R k, k=0 => r1, k=1 => r5')
     parser.add_argument('--test', action='store_true',
-                        help='use cosine lr schedule')
+                        help='test')
     parser.add_argument("--warmup", type=int, default=-1, help=" ")
     parser.add_argument('--reg_top', type=int, default=5,
                     help='use all layer for local feature')

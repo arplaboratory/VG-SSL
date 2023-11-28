@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 import time
 from mapillary_sls.evaluate import eval_api, create_dummy_predictions
+import os
+from datasets_ws import path_to_pil_img
 
 def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
     """This function gives the same output as test(), but uses much less RAM.
@@ -334,18 +336,31 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     # For each query, check if the predictions are correct
     positives_per_query = eval_ds.get_positives()
     # args.recall_values by default is [1, 5, 10, 20]
-    recalls = np.zeros(len(args.recall_values))
-    for query_index, pred in enumerate(predictions):
-        for i, n in enumerate(args.recall_values):
-            if np.any(np.in1d(pred[:n], positives_per_query[query_index])):
-                recalls[i:] += 1
-                break
-    # Divide by the number of queries*100, so the recalls are in percentages
-    recalls = recalls / eval_ds.queries_num * 100
-    recalls_str = ", ".join(
-        [f"R@{val}: {rec:.1f}" for val,
-            rec in zip(args.recall_values, recalls)]
-    )
+    if args.dataset_name == 'msls':
+        predictions_str = []
+        for query_index, pred in enumerate(predictions):
+            string = [eval_ds.queries_paths[query_index].split('/')[-1].replace('.jpg','')]
+            for pred_id in pred:
+                string.append(eval_ds.database_paths[pred_id].split('/')[-1].replace('.jpg',''))
+            predictions_str.append(string)
+        predictions_str = np.array(predictions_str)
+        if eval_ds.split == 'test':
+            create_dummy_predictions(prediction_path=os.path.join(args.save_dir, 'global.csv'), dataset=eval_ds, ranks=predictions_str[:,1:200])
+            # return [0], ''
+        else:
+            recalls_str, recalls = eval_api(predictions_str, ks=args.recall_values, root_default=eval_ds.dataset_folder)
+    else:
+        recalls = np.zeros(len(args.recall_values))
+        for query_index, pred in enumerate(predictions):
+            for i, n in enumerate(args.recall_values):
+                if np.any(np.in1d(pred[:n], positives_per_query[query_index])):
+                    recalls[i:] += 1
+                    break
+        # Divide by the number of queries*100, so the recalls are in percentages
+        recalls = recalls / eval_ds.queries_num * 100
+        recalls_str = ", ".join([f"R@{val}: {rec:.1f}" for val, rec in zip(args.recall_values, recalls)])
+    # if save is not None:
+    #     return predictions, recalls_str 
     return recalls, recalls_str
 
 def test_rerank(args, eval_ds, model, test_method="hard_resize", pca=None, num_local=500, rerank_dim=131, rerank_top=100, rerank_bs=4, save=None, reg_top=5,ransac=False, threshold=0, debug=False):
@@ -491,16 +506,27 @@ def test_rerank(args, eval_ds, model, test_method="hard_resize", pca=None, num_l
             # return [0], ''
         else:
             recalls_str, recalls = eval_api(predictions_str, ks=args.recall_values, root_default=eval_ds.dataset_folder)
+            print(recalls_str)
     else:
         recalls = np.zeros(len(args.recall_values))
+        # if not os.path.isdir("vis"):
+        #     os.mkdir("vis")
         for query_index, pred in enumerate(predictions):
             for i, n in enumerate(args.recall_values):
                 if np.any(np.in1d(pred[:n], positives_per_query[query_index])):
                     recalls[i:] += 1
                     break
+            ## Uncomment this to visualize
+            # img = path_to_pil_img(eval_ds.queries_paths[query_index])
+            # img.save(os.path.join("vis",eval_ds.queries_paths[query_index].split('/')[-1]))
+            # for i in range(5):
+            #     img = path_to_pil_img(eval_ds.database_paths[pred[i]])
+            #     img.save(os.path.join("vis",eval_ds.queries_paths[query_index].split('/')[-1].replace('.jpg','') + \
+            #                                 f"_{i}_{pred[i] in positives_per_query[query_index]}_"+eval_ds.database_paths[pred[i]].split('/')[-1]))
         # Divide by the number of queries*100, so the recalls are in percentages
         recalls = recalls / eval_ds.queries_num * 100
         recalls_str = ", ".join([f"R@{val}: {rec:.1f}" for val, rec in zip(args.recall_values, recalls)])
+        print(recalls_str)
     if save is not None:
         return predictions, recalls_str
     # ====================================================================
@@ -573,6 +599,7 @@ def test_rerank(args, eval_ds, model, test_method="hard_resize", pca=None, num_l
     recalls_str = recalls_str + '\n' + 'rerank: ' + ", ".join(
         [f"R@{val}: {rec:.1f}" for val, rec in zip(args.recall_values, recalls)])
     recalls_retrieval = recalls
+    print(recalls_str)
     # =========================================================================================
     if debug:
         return ranks, new_rank

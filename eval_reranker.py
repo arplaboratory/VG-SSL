@@ -102,7 +102,12 @@ def run_train():
         model = convert_model(model)
         model = model.cuda()
 
-    recalls, recalls_str = test.test_rerank(args, test_ds, model, test_method=args.test_method,rerank_bs=args.rerank_batch_size, num_local=args.num_local, rerank_dim=(args.local_dim+3), reg_top=args.reg_top, visualize=args.visualize_input)
+    if args.test:
+        ds = test_ds
+    else:
+        ds = val_ds
+        
+    recalls, recalls_str = test.test_rerank(args, ds, model, test_method=args.test_method,rerank_bs=args.rerank_batch_size, num_local=args.num_local, rerank_dim=(args.local_dim+3), reg_top=args.reg_top)
     logging.info(f"Recalls on {test_ds}: {recalls_str}")
 
 if __name__=='__main__':

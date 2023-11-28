@@ -1,9 +1,9 @@
 # Precompute
- # ResNet50conv5 + GEM
-sbatch script/precompute_msls.sbatch resnet50conv5 logs/global_retrieval/msls-2023-08-10_11-47-49-6b0fdeef-1ebc-4af6-8332-d8145cc9acc5
- # ResNet101conv5 + GEM
-sbatch script/precompute_msls.sbatch resnet101conv5 logs/global_retrieval/msls-2023-08-09_20-35-49-592ba884-45dd-4c06-8ed7-a6d6c20fd822
- # Deitbase + GEM
-sbatch script/precompute_msls.sbatch deitBase logs/global_retrieval/msls-2023-08-09_19-25-11-5382da1d-d113-4d00-bde6-d2238d05a339
- # Deit + GEM
-sbatch script/precompute_msls.sbatch deit logs/global_retrieval/msls-2023-08-10_15-17-59-d389d9e3-71aa-461d-bc47-59ea7bf3c259
+
+sbatch script/precompute_msls.sbatch deit logs/global_retrieval/msls-2023-11-14_22-20-51-e08fb779-14ac-4153-8171-28ff76c3b20e bt
+sbatch script/precompute_msls.sbatch deit logs/global_retrieval/msls-2023-11-15_18-19-55-a978621e-3cc9-4da2-8aed-03cf486e3ed0 byol
+sbatch script/precompute_msls.sbatch deit logs/global_retrieval/msls-2023-11-15_02-07-22-94f460c8-16d0-47b1-bdb1-8a85f71ae4ac mocov2
+sbatch script/precompute_msls.sbatch deit logs/global_retrieval/msls-2023-11-15_02-02-22-f74a3d19-d8b1-4bf1-9f16-284d5c39b511 simclr
+sbatch script/precompute_msls.sbatch deit logs/global_retrieval/msls-2023-11-15_18-21-16-2ef8e683-12b4-412d-a730-df4b2e4eb55d simsiam
+sbatch script/precompute_msls.sbatch deit logs/global_retrieval/msls-2023-11-15_01-38-14-f09b5b56-7da6-4627-8189-98c5ac32574e vicreg
+
