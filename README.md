@@ -82,6 +82,8 @@ source ~/.bashrc; conda activate VG_SSL; python3 -u train_ssl.py --dataset_name 
 
 ### 4. Run the experiments
 
+* First stage: Training global retrieval part:
+
 To run simclr and mocov2 experiments, run ```train_msls_simclr_final_sbatch.sh``` 
 
 To run byol and simsiam experiments, run ```train_msls_byol_final_sbatch.sh``` 
@@ -94,7 +96,14 @@ After training, you can find the **model_folder_name** in the **logs** folders a
 $Training_dataset-$datetime-$uuid
 ```
 
+* Second stage: Training the reranking part and finetuning:
+
+Use ```train.sh``` to train the reranking part and finetune.
+
+Remember to Change the ```--resume``` argument in the sbatch scripts to load the global retrieval models you trained in the first stage
+
 ## Evaluation
+
 For evaluation, use the script located in ```./script/eval_ssl_singularity.sbatch```. This script is designed to evaluate the recall performance of your trained models using standard metrics.
 
 ## Acknowledgement
