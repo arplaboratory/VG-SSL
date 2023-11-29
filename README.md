@@ -101,10 +101,10 @@ For evaluation, use the script located in ```./script/eval_ssl_singularity.sbatc
 
 VG-SSL builds upon several existing frameworks and repositories:
 
-https://github.com/gmberton/deep-visual-geo-localization-benchmark 
-https://github.com/bytedance/R2Former 
-https://github.com/google-research/simclr 
-https://github.com/facebookresearch/moco 
-https://github.com/lucidrains/byol-pytorch 
-https://github.com/facebookresearch/barlowtwins 
-https://github.com/facebookresearch/vicreg 
+https://github.com/gmberton/deep-visual-geo-localization-benchmark  
+https://github.com/bytedance/R2Former  
+https://github.com/google-research/simclr  
+https://github.com/facebookresearch/moco  
+https://github.com/lucidrains/byol-pytorch  
+https://github.com/facebookresearch/barlowtwins  
+https://github.com/facebookresearch/vicreg  
