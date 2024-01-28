@@ -129,6 +129,7 @@ def parse_arguments():
     )
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.00001, help="_")
+    parser.add_argument("--wd", type=float, default=1e-6, help="_")
     parser.add_argument(
         "--lr_crn_layer",
         type=float,

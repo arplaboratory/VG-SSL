@@ -388,10 +388,10 @@ def setup_optimizer_loss(args, model_parameters, return_loss=True):
         raise NotImplementedError()
     else:
         if args.optim == "adam":
-            optimizer = torch.optim.Adam(model_parameters, lr=args.lr)
+            optimizer = torch.optim.Adam(model_parameters, lr=args.lr, weight_decay=args.wd)
         elif args.optim == "sgd":
             optimizer = torch.optim.SGD(
-                model_parameters, lr=args.lr, momentum=0.9, weight_decay=0.001
+                model_parameters, lr=args.lr, momentum=0.9, weight_decay=args.wd
             )
         else:
             raise NotImplementedError()
