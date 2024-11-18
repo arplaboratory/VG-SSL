@@ -1,6 +1,6 @@
 # VG-SSL
 
-This is the official repository for [VG-SSL: Benchmarking Self-supervised Representation Learning Approaches for Visual Geo-localization](). VG-SSL is designed to facilitate research and development in geo-localization by providing a robust framework for evaluating self-supervised learning approaches.
+This is the official repository for [VG-SSL: Benchmarking Self-supervised Representation Learning Approaches for Visual Geo-localization](https://arxiv.org/abs/2308.00090). VG-SSL is designed to facilitate research and development in geo-localization by providing a robust framework for evaluating self-supervised learning approaches.
 
 ## Prerequisites
 
