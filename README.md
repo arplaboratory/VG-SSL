@@ -108,6 +108,10 @@ Remember to Change the ```--resume``` argument in the sbatch scripts to load the
 
 For evaluation, use the script located in ```./script/eval_ssl_singularity.sbatch```. This script is designed to evaluate the recall performance of your trained models using standard metrics.
 
+## Model weights
+
+Download models trained with different strategies: [Download](https://drive.google.com/drive/folders/1dm5bcwV_u2GL8QG1BqVrcZQB0F0sK8gy?usp=sharing)
+
 ## Acknowledgement
 
 VG-SSL builds upon several existing frameworks and repositories:
