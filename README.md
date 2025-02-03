@@ -4,6 +4,15 @@ This is the official repository for [VG-SSL: Benchmarking Self-supervised Repres
 
 VG-SSL is designed to facilitate research and development in geo-localization by providing a robust framework for evaluating self-supervised learning approaches.
 
+```
+@article{xiao2023visual,
+  title={Visual geo-localization with self-supervised representation learning},
+  author={Xiao, Jiuhong and Zhu, Gao and Loianno, Giuseppe},
+  journal={arXiv preprint arXiv:2308.00090},
+  year={2023}
+}
+```
+
 ## Prerequisites
 
 Before you begin, ensure you have Anaconda installed on your system as it is required for setting up the environment.
