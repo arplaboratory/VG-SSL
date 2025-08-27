@@ -5,11 +5,13 @@ This is the official repository for [VG-SSL: Benchmarking Self-supervised Repres
 VG-SSL is designed to facilitate research and development in geo-localization by providing a robust framework for evaluating self-supervised learning approaches.
 
 ```
-@article{xiao2023visual,
-  title={Visual geo-localization with self-supervised representation learning},
-  author={Xiao, Jiuhong and Zhu, Gao and Loianno, Giuseppe},
-  journal={arXiv preprint arXiv:2308.00090},
-  year={2023}
+@InProceedings{Xiao_2025_WACV,
+    author    = {Xiao, Jiuhong and Zhu, Gao and Loianno, Giuseppe},
+    title     = {VG-SSL: Benchmarking Self-Supervised Representation Learning Approaches for Visual Geo-Localization},
+    booktitle = {Proceedings of the Winter Conference on Applications of Computer Vision (WACV)},
+    month     = {February},
+    year      = {2025},
+    pages     = {6667-6677}
 }
 ```
 
